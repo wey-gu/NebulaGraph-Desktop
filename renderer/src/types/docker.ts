@@ -35,17 +35,15 @@ export interface DockerStatus {
 }
 
 export interface DockerAPI {
-  start: () => Promise<{ success: boolean; error?: string }>;
-  stop: () => Promise<{ success: boolean; error?: string }>;
   status: () => Promise<boolean>;
   systemStatus: () => Promise<DockerSystemStatus>;
-  toggle: (start: boolean) => Promise<boolean>;
+  start: () => Promise<{ success: boolean; error?: string }>;
+  stop: () => Promise<{ success: boolean; error?: string }>;
   getServices: () => Promise<Record<string, ServiceStatus>>;
-  getLogs: (serviceName: string) => Promise<LogEntry[]>;
-  clearLogs: (serviceName: string) => Promise<void>;
   startService: (serviceName: string) => Promise<{ success: boolean; error?: string }>;
   stopService: (serviceName: string) => Promise<{ success: boolean; error?: string }>;
   restartService: (serviceName: string) => Promise<{ success: boolean; error?: string }>;
+  getLogs: (serviceName: string) => Promise<Array<LogEntry>>;
 }
 
 declare global {

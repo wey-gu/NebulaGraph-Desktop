@@ -53,15 +53,16 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
 
   const getServiceIcon = () => {
     switch (service.name) {
-      case 'Studio':
+      case 'studio':
         return <Globe className="w-5 h-5" />;
-      case 'Meta Service':
+      case 'metad':
         return <Server className="w-5 h-5" />;
-      case 'Storage Service':
+      case 'storaged':
         return <Database className="w-5 h-5" />;
-      case 'Graph Service':
+      case 'graphd':
         return <Activity className="w-5 h-5" />;
       default:
+        console.log('Unknown service name:', service.name);
         return <Server className="w-5 h-5" />;
     }
   };

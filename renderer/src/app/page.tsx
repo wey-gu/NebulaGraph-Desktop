@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { DockerControls } from '@/components/features/docker/docker-controls'
 import { ServicesGrid } from '@/components/features/services/services-grid'
@@ -9,7 +9,7 @@ import { HeroSection } from '@/components/blocks/hero-section-dark'
 import { Spinner } from '@/components/ui/spinner'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { cn } from '@/lib/utils'
-import { Globe, HomeIcon, ArrowUpRight, Loader2 } from 'lucide-react'
+import { Globe, ArrowUpRight, Info } from 'lucide-react'
 import { toast } from 'sonner'
 import { ServicesSkeleton } from '@/components/features/services/services-skeleton'
 import { DockerSetupGuide } from '@/components/features/docker/docker-setup-guide'
@@ -31,153 +31,128 @@ export default function Home() {
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true)
   const [showDockerSetup, setShowDockerSetup] = useState<boolean>(false)
 
-  useEffect(() => {
-    checkDockerStatus();
-  }, []);
+  // Add service status polling interval ref
+  const statusPollingRef = useRef<NodeJS.Timeout | null>(null)
+  const isFirstLoad = useRef<boolean>(true)
 
-  const checkDockerStatus = async () => {
+  // Optimize service status polling
+  const pollServicesStatus = useCallback(async () => {
     try {
-      // Try to run docker --version first to check if Docker CLI is installed
-      try {
-        const result = await window.electronAPI.docker.status();
-        setIsDockerRunning(result);
-        
-        if (!result) {
-          setStatus('Docker is not running');
-          setShowDockerSetup(true);
-          return;
-        }
+      const services = await window.electronAPI.docker.getServices()
+      setServices(services)
+      
+      // Check if any service is still starting
+      const hasStartingServices = Object.values(services).some(
+        s => s.status === 'running' && s.health === 'starting'
+      )
 
-        // Check if Docker Compose is available
-        try {
-          const startResult = await window.electronAPI.docker.start();
-          if (startResult.error?.toLowerCase().includes('docker compose') || 
-              startResult.error?.toLowerCase().includes('compose')) {
-            setStatus('Docker Compose is not available');
-            setShowDockerSetup(true);
-            return;
-          }
-        } catch (error: any) {
-          const errorMessage = typeof error === 'string' ? error : error?.message || error?.toString();
-          if (errorMessage.toLowerCase().includes('compose')) {
-            setStatus('Docker Compose is not available');
-            setShowDockerSetup(true);
-            return;
-          }
-        }
-
-        // If we get here, Docker is running and Compose is available
-        setStatus('Docker is running');
-        setShowDockerSetup(false);
-        
-        // Check services status
-        await refreshServices();
-      } catch (error: any) {
-        const errorMessage = typeof error === 'string' ? error : error?.message || error?.toString();
-        
-        if (errorMessage.toLowerCase().includes('command not found') || 
-            errorMessage.toLowerCase().includes('no such file or directory')) {
-          setStatus('Docker CLI not found');
-          setShowDockerSetup(true);
-          return;
-        }
-
-        throw error; // Re-throw other errors to be caught below
-      }
-    } catch (error) {
-      console.error('Error checking Docker status:', error);
-      setStatus('Error checking Docker status');
-      setShowDockerSetup(true);
-    } finally {
-      setIsInitialLoading(false);
-    }
-  };
-
-  const refreshServices = async () => {
-    try {
-      const services = await window.electronAPI.docker.getServices();
-      console.log('✓ Services refreshed:', services);
-      setServices(services);
-    } catch (error) {
-      console.error('✕ Service refresh failed:', error);
-      toast.error('Failed to refresh services');
-    }
-  };
-
-  const toggleDocker = async (start: boolean) => {
-    if (!window.electronAPI?.docker) return;
-    
-    setIsLoading(true)
-    try {
-      const result = await window.electronAPI.docker.toggle(start)
-      setIsDockerRunning(result)
-      setStatus(result ? 'Docker is running' : 'Docker is stopped')
-      if (result) {
-        await refreshServices()
-        toast.success('Docker started successfully')
+      // Check service states and set appropriate status
+      const runningCount = Object.values(services).filter(s => s.status === 'running').length
+      const totalServices = Object.keys(services).length
+      const errorCount = Object.values(services).filter(s => s.status === 'error').length
+      
+      if (hasStartingServices) {
+        setStatus('Services are starting...')
+      } else if (errorCount > 0) {
+        setStatus(`${errorCount} service${errorCount > 1 ? 's' : ''} in error state`)
+      } else if (runningCount === 0) {
+        setStatus('All services are stopped')
+      } else if (runningCount === totalServices) {
+        setStatus('All services are running')
       } else {
-        toast.success('Docker stopped successfully')
+        setStatus(`${runningCount} of ${totalServices} services running`)
+      }
+
+      // Adjust polling interval based on service state
+      if (statusPollingRef.current) {
+        clearInterval(statusPollingRef.current)
+      }
+
+      statusPollingRef.current = setInterval(() => {
+        pollServicesStatus()
+      }, hasStartingServices ? 2000 : 5000) // Poll faster when services are starting
+    } catch (error) {
+      console.error('Failed to poll services:', error)
+      setStatus('Error checking service status')
+    }
+  }, [])
+
+  // Optimize initial load
+  const initializeApp = useCallback(async () => {
+    try {
+      // Quick Docker status check first
+      const result = await window.electronAPI.docker.status()
+      setIsDockerRunning(result)
+      
+      if (!result) {
+        setStatus('Docker is not running')
+        setShowDockerSetup(true)
+        setIsInitialLoading(false)
+        return
+      }
+
+      // Start polling service status immediately
+      await pollServicesStatus()
+      
+      // Only show setup guide if needed
+      const systemStatus = await window.electronAPI.docker.systemStatus()
+      if (!systemStatus.isInstalled || !systemStatus.compose?.isInstalled) {
+        setShowDockerSetup(true)
       }
     } catch (error) {
-      setStatus('Error toggling Docker')
-      toast.error('Failed to toggle Docker', {
-        description: 'Please try again or check Docker installation.'
-      })
+      console.error('Error initializing app:', error)
+      setStatus('Error checking Docker status')
+      setShowDockerSetup(true)
+    } finally {
+      setIsInitialLoading(false)
     }
-    setIsLoading(false)
-  }
+  }, [pollServicesStatus])
+
+  // Handle cleanup
+  useEffect(() => {
+    return () => {
+      if (statusPollingRef.current) {
+        clearInterval(statusPollingRef.current)
+      }
+    }
+  }, [])
+
+  // Initialize app
+  useEffect(() => {
+    if (isFirstLoad.current) {
+      isFirstLoad.current = false
+      initializeApp()
+    }
+  }, [initializeApp])
 
   const startNebulaGraph = async () => {
-    console.log('▶️ Starting NebulaGraph services...');
-    setIsLoading(true);
-    setStatus('Starting NebulaGraph services...');
+    setIsLoading(true)
+    setStatus('Starting NebulaGraph services...')
     
     try {
-      const result = await window.electronAPI.docker.start();
-      console.log('✓ Start result:', result);
+      const result = await window.electronAPI.docker.start()
       
       if (result.success) {
-        setStatus('NebulaGraph services started successfully');
-        await refreshServices();
-        toast.success('NebulaGraph services started', {
-          description: 'All services are now running.'
-        });
+        setStatus('NebulaGraph services started successfully')
+        await pollServicesStatus()
+        toast.success('NebulaGraph services started')
       } else {
-        console.error('✕ Start failed:', result.error);
-        setStatus(`Failed to start services: ${result.error}`);
-        
-        // Show appropriate error message based on the error
-        if (result.error?.includes('Docker is not installed')) {
-          toast.error('Docker is not installed', {
-            description: 'Please install Docker Desktop from https://www.docker.com/products/docker-desktop'
-          });
-        } else if (result.error?.includes('Docker is not running')) {
-          toast.error('Docker is not running', {
-            description: 'Please start Docker Desktop and try again'
-          });
-        } else if (result.error?.includes('Docker Compose')) {
-          toast.error('Docker Compose is not available', {
-            description: 'Please install Docker Compose v2'
-          });
-        } else {
-          toast.error('Failed to start services', {
-            description: result.error || 'An unknown error occurred.'
-          });
-        }
+        setStatus(`Failed to start services: ${result.error}`)
+        toast.error('Failed to start services', {
+          description: result.error || 'An unknown error occurred.'
+        })
       }
     } catch (error) {
-      console.error('✕ Start error:', error);
-      setStatus('Error starting services');
-      toast.error('Error starting services', {
-        description: 'Please try again or check the logs for more details.'
-      });
+      console.error('Start error:', error)
+      setStatus('Error starting services')
+      toast.error('Error starting services')
+    } finally {
+      setIsLoading(false)
     }
-    
-    setIsLoading(false);
-  };
+  }
 
   const stopNebulaGraph = async () => {
-    if (!window.electronAPI?.docker) return;
+    if (!window.electronAPI?.docker) return
     
     console.log('⏹️ Stopping NebulaGraph services...')
     setIsLoading(true)
@@ -188,8 +163,8 @@ export default function Home() {
       
       if (result.success) {
         setStatus('NebulaGraph services stopped successfully')
-        const updatedServices = await refreshServices()
-        console.log('✓ Services after stop:', updatedServices)
+        await pollServicesStatus()
+        console.log('✓ Services after stop:', services)
         toast.success('NebulaGraph services stopped', {
           description: 'All services have been stopped.'
         })
@@ -211,7 +186,7 @@ export default function Home() {
   }
 
   const openStudio = () => {
-    if (!window.electronAPI?.docker) return;
+    if (!window.electronAPI?.docker) return
     
     console.log('🌐 Opening NebulaGraph Studio...')
     if (!Object.values(services).some(s => s.name === 'studio' && s.status === 'running')) {
@@ -231,7 +206,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-white dark:bg-[#0B0F17] text-black dark:text-white">
       {showDockerSetup && (
-        <DockerSetupGuide onComplete={checkDockerStatus} />
+        <DockerSetupGuide onComplete={initializeApp} />
       )}
       {!showDashboard ? (
         <HeroSection
@@ -524,7 +499,7 @@ export default function Home() {
                   </button>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     {Object.values(services).some(s => s.name === 'studio' && s.status === 'running')
-                      ? 'Note: hostname is `graphd`'
+                      ? <span className="flex items-center gap-1"><Info className="w-3.5 h-3.5" /> hostname: `graphd`</span>
                       : ''}
                   </p>
                 </div>
@@ -535,7 +510,7 @@ export default function Home() {
               <ServicesGrid 
                 services={services}
                 isLoading={isLoading} 
-                onServiceUpdate={refreshServices}
+                onServiceUpdate={pollServicesStatus}
               />
             </div>
           </div>

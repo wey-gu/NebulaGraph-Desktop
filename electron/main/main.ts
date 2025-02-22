@@ -39,6 +39,10 @@ ipcMain.handle('docker:status', async () => {
   return dockerService.checkDockerStatus();
 });
 
+ipcMain.handle('docker:systemStatus', async () => {
+  return dockerService.getSystemStatus();
+});
+
 ipcMain.handle('docker:toggle', async (_, start: boolean) => {
   if (start) {
     await dockerService.startServices();
@@ -56,11 +60,11 @@ ipcMain.handle('docker:stop', async () => {
   return dockerService.stopServices();
 });
 
-ipcMain.handle('docker:services', async () => {
+ipcMain.handle('docker:getServices', async () => {
   return dockerService.getServicesStatus();
 });
 
-ipcMain.handle('docker:logs', async (_, serviceName: string) => {
+ipcMain.handle('docker:getLogs', async (_, serviceName: string) => {
   return dockerService.getServiceLogs(serviceName);
 });
 

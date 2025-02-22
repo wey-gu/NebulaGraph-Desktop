@@ -39,6 +39,12 @@ interface DockerSystemStatus {
   error?: string;
 }
 
+// Add cache management
+interface ImageCheckCache {
+  timestamp: number;
+  status: boolean;
+}
+
 export class DockerService {
   private composeFilePath: string = '';
   private dataDir: string = '';
@@ -78,10 +84,30 @@ export class DockerService {
       dependencies: ['graphd']
     }
   };
+  
+  // Add cache properties
+  private static imageCheckCache: ImageCheckCache | null = null;
+  private static CACHE_DURATION = 1000 * 60 * 60; // 1 hour
+  private static servicesStarting: boolean = false;
+  private static lastServiceStatus: Record<string, ServiceStatus> = {};
 
   constructor() {
     this.dockerChecker = new DockerChecker();
     this.initializePaths();
+  }
+
+  // Add cache management methods
+  private static isImageCheckCacheValid(): boolean {
+    if (!DockerService.imageCheckCache) return false;
+    const now = Date.now();
+    return (now - DockerService.imageCheckCache.timestamp) < DockerService.CACHE_DURATION;
+  }
+
+  private static updateImageCheckCache(status: boolean) {
+    DockerService.imageCheckCache = {
+      timestamp: Date.now(),
+      status
+    };
   }
 
   private async initializePaths() {
@@ -218,150 +244,104 @@ export class DockerService {
   async startServices(
     onProgress?: (status: { service: string; attempt: number; maxAttempts: number; state: string }) => void
   ): Promise<{ success: boolean; error?: string }> {
+    if (DockerService.servicesStarting) {
+      return { success: false, error: 'Services are already starting' };
+    }
+
     try {
-      // Check Docker status
+      DockerService.servicesStarting = true;
+      
+      // Quick Docker check without image verification
       const dockerStatus = await this.dockerChecker.checkDocker();
-      
-      if (!dockerStatus.isInstalled) {
+      if (!dockerStatus.isInstalled || !dockerStatus.isRunning || !dockerStatus.compose?.isInstalled) {
         return { 
           success: false, 
-          error: 'Docker is not installed. Please install Docker Desktop first.' 
-        };
-      }
-      
-      if (!dockerStatus.isRunning) {
-        return { 
-          success: false, 
-          error: 'Docker is not running. Please start Docker Desktop first.' 
-        };
-      }
-      
-      if (!dockerStatus.compose?.isInstalled) {
-        return { 
-          success: false, 
-          error: 'Docker Compose is not available. Please install Docker Compose v2.' 
+          error: 'Docker system requirements not met. Please check Docker installation.' 
         };
       }
 
-      // Ensure images are loaded
-      onProgress?.({
-        service: 'system',
-        attempt: 0,
-        maxAttempts: 1,
-        state: 'Checking Docker images...'
-      });
+      // Use cached image check if valid
+      if (!DockerService.isImageCheckCacheValid()) {
+        onProgress?.({
+          service: 'system',
+          attempt: 0,
+          maxAttempts: 1,
+          state: 'Checking Docker images...'
+        });
 
-      const imagesLoaded = await this.dockerChecker.ensureImagesLoaded(
-        (current, total, imageName) => {
-          console.log(`Loading image ${current}/${total}: ${imageName}`);
-          onProgress?.({
-            service: 'system',
-            attempt: current,
-            maxAttempts: total,
-            state: `Loading image: ${imageName}`
-          });
+        const imagesLoaded = await this.dockerChecker.ensureImagesLoaded(
+          (current, total, imageName) => {
+            onProgress?.({
+              service: 'system',
+              attempt: current,
+              maxAttempts: total,
+              state: `Loading image: ${imageName}`
+            });
+          }
+        );
+
+        DockerService.updateImageCheckCache(imagesLoaded);
+        
+        if (!imagesLoaded) {
+          DockerService.servicesStarting = false;
+          return { 
+            success: false, 
+            error: 'Failed to load required Docker images.' 
+          };
         }
-      );
-
-      if (!imagesLoaded) {
-        return { 
-          success: false, 
-          error: 'Failed to load required Docker images. Please check your internet connection and try again.' 
-        };
-      }
-
-      // Check ports
-      onProgress?.({
-        service: 'system',
-        attempt: 0,
-        maxAttempts: 1,
-        state: 'Checking port availability...'
-      });
-
-      const allPorts = Object.values(this.serviceConfigs).flatMap(config => config.requiredPorts);
-      const { available, conflictingPorts } = await this.checkPortAvailability(allPorts);
-      
-      if (!available) {
-        return { 
-          success: false, 
-          error: `Ports ${conflictingPorts.join(', ')} are already in use. Please stop any services using these ports.` 
-        };
       }
 
       // Start services
-      onProgress?.({
-        service: 'system',
-        attempt: 0,
-        maxAttempts: 1,
-        state: 'Starting services...'
-      });
-
       const { stdout, stderr } = await exec(`docker compose -f "${this.composeFilePath}" up -d`);
-      console.log('Docker Compose up output:', stdout);
       
-      if (stderr) {
-        console.warn('Docker Compose up warnings:', stderr);
-      }
+      // Initial delay reduced to 1 second
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Initial delay to let services start
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Wait for services with periodic status updates
+      // Parallel health checks with reduced timeout
       const services = Object.keys(this.serviceConfigs);
+      const maxRetries = 20; // 20 * 1 second = 20 seconds total timeout
       let retries = 0;
-      const maxRetries = 30; // 30 * 2 seconds = 60 seconds total timeout
-      let allHealthy = false;
-
-      while (retries < maxRetries && !allHealthy) {
-        let currentStatus = await this.getServicesStatus();
-        let stillStarting = false;
-        let hasErrors = false;
-
-        for (const [serviceName, status] of Object.entries(currentStatus)) {
-          onProgress?.({
-            service: serviceName,
-            attempt: retries + 1,
-            maxAttempts: maxRetries,
-            state: `${status.status} (${status.health})`
-          });
-
-          if (status.status === 'running' && status.health === 'starting') {
-            stillStarting = true;
-          } else if (status.status === 'error' || status.health === 'unhealthy') {
-            hasErrors = true;
-          }
+      
+      while (retries < maxRetries) {
+        const currentStatus = await this.getServicesStatus();
+        const allHealthy = Object.values(currentStatus).every(
+          status => status.status === 'running' && status.health === 'healthy'
+        );
+        
+        if (allHealthy) {
+          DockerService.servicesStarting = false;
+          return { success: true };
         }
 
-        if (!stillStarting && !hasErrors) {
-          allHealthy = true;
-          break;
-        }
+        onProgress?.({
+          service: 'system',
+          attempt: retries + 1,
+          maxAttempts: maxRetries,
+          state: 'Waiting for services to be healthy...'
+        });
 
-        if (!allHealthy) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          retries++;
-        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        retries++;
       }
 
-      // Final status check
+      DockerService.servicesStarting = false;
       const finalStatus = await this.getServicesStatus();
       const unhealthyServices = Object.entries(finalStatus)
-        .filter(([_, status]) => status.status === 'error' || status.health === 'unhealthy')
+        .filter(([_, status]) => status.status !== 'running' || status.health !== 'healthy')
         .map(([name, _]) => name);
 
-      if (unhealthyServices.length > 0) {
-        return {
-          success: false,
-          error: `Services ${unhealthyServices.join(', ')} failed to start properly. Please check the logs for more details.`
-        };
-      }
-
-      return { success: true };
+      return {
+        success: unhealthyServices.length === 0,
+        error: unhealthyServices.length > 0 
+          ? `Services ${unhealthyServices.join(', ')} failed to start properly.`
+          : undefined
+      };
     } catch (error) {
+      DockerService.servicesStarting = false;
       console.error('Failed to start services:', error);
       return { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Failed to start services. Please try again.' 
+        error: error instanceof Error ? error.message : 'Failed to start services.' 
       };
     }
   }
@@ -487,56 +467,84 @@ export class DockerService {
   }
 
   async getServicesStatus(): Promise<Record<string, ServiceStatus>> {
-    const services: Record<string, ServiceStatus> = {};
-
-    for (const [serviceName, config] of Object.entries(this.serviceConfigs)) {
-      try {
-        // Check if container exists and is running
-        const { stdout: inspectOutput } = await exec(
-          `docker inspect ${this.getContainerName(serviceName)}`
-        );
-        
-        const inspectData = JSON.parse(inspectOutput)[0];
-        const isRunning = inspectData?.State?.Running === true;
-        const health = await this.getServiceHealth(serviceName);
-
-        // Get container metrics
-        let metrics = null;
-        if (isRunning) {
-          const { stdout: statsOutput } = await exec(
-            `docker stats ${this.getContainerName(serviceName)} --no-stream --format "{{.CPUPerc}};{{.MemUsage}};{{.NetIO}}"`
-          );
-          
-          const [cpu, mem, net] = statsOutput.split(';');
-          metrics = {
-            cpu: cpu?.replace('%', '') || '0',
-            memory: mem?.split('/')[0].trim() || '0',
-            network: net || '0'
-          };
-        }
-
-        services[serviceName] = {
-          name: config.name,
-          status: isRunning ? 'running' as const : 'stopped' as const,
-          health,
-          metrics,
-          ports: config.ports,
-          logs: []
-        };
-      } catch (error) {
-        console.error(`Error getting status for ${serviceName}:`, error);
-        services[serviceName] = {
-          name: config.name,
-          status: 'error' as const,
-          health: 'unknown',
-          metrics: null,
-          ports: config.ports,
-          logs: []
-        };
-      }
+    // Return cached status if services are still starting
+    if (DockerService.servicesStarting && Object.keys(DockerService.lastServiceStatus).length > 0) {
+      return DockerService.lastServiceStatus;
     }
 
-    return services;
+    try {
+      const services: Record<string, ServiceStatus> = {};
+      const statusPromises = Object.entries(this.serviceConfigs).map(async ([serviceName, config]) => {
+        try {
+          const containerName = this.getContainerName(serviceName);
+          const { stdout: inspectOutput } = await exec(`docker inspect ${containerName} || echo "not-found"`);
+          
+          if (inspectOutput === "not-found") {
+            services[serviceName] = {
+              name: config.name,
+              status: 'stopped',
+              health: 'unknown',
+              metrics: null,
+              ports: config.ports,
+              logs: []
+            };
+            return;
+          }
+
+          const inspectData = JSON.parse(inspectOutput)[0];
+          const isRunning = inspectData?.State?.Running === true;
+          const health = await this.getServiceHealth(serviceName);
+
+          if (isRunning) {
+            // Get metrics in parallel
+            const metricsPromise = exec(
+              `docker stats ${containerName} --no-stream --format "{{.CPUPerc}};{{.MemUsage}};{{.NetIO}}"`
+            ).catch(() => ({ stdout: '0%;0MB;0B' }));
+
+            const { stdout: statsOutput } = await metricsPromise;
+            const [cpu, mem, net] = statsOutput.split(';');
+            
+            services[serviceName] = {
+              name: config.name,
+              status: 'running',
+              health,
+              metrics: {
+                cpu: cpu?.replace('%', '') || '0',
+                memory: mem?.split('/')[0].trim() || '0',
+                network: net || '0'
+              },
+              ports: config.ports,
+              logs: []
+            };
+          } else {
+            services[serviceName] = {
+              name: config.name,
+              status: 'stopped',
+              health: 'unknown',
+              metrics: null,
+              ports: config.ports,
+              logs: []
+            };
+          }
+        } catch (error) {
+          services[serviceName] = {
+            name: config.name,
+            status: 'error',
+            health: 'unknown',
+            metrics: null,
+            ports: config.ports,
+            logs: []
+          };
+        }
+      });
+
+      await Promise.all(statusPromises);
+      DockerService.lastServiceStatus = services;
+      return services;
+    } catch (error) {
+      console.error('Error getting services status:', error);
+      return DockerService.lastServiceStatus;
+    }
   }
 
   private convertToMB(value: number, unit: string): number {
