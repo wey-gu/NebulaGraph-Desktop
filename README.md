@@ -1,6 +1,6 @@
 # NebulaGraph Desktop
 
-A modern, cross-platform desktop application for managing NebulaGraph services.
+A modern, cross-platform desktop version of NebulaGraph.
 
 ![NebulaGraph Desktop](./assets/screenshot.png)
 
@@ -32,17 +32,6 @@ A modern, cross-platform desktop application for managing NebulaGraph services.
 ## Development
 
 See [DEVELOPMENT.md](./DEVELOPMENT.md) for detailed development instructions and progress.
-
-```bash
-# Clone the repository
-git clone https://github.com/vesoft-inc/nebulagraph-desktop.git
-
-# Install dependencies
-npm install
-
-# Start development
-npm run dev
-```
 
 ## Contributing
 
