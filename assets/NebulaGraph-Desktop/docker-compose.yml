@@ -94,7 +94,12 @@ services:
       - "7001:7001"
     depends_on:
       - graphd
-
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:7001/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
   storage-activator:
     # This is just a script to activate storaged for the first time run by calling nebula-console
     # Refer to https://docs.nebula-graph.io/master/4.deployment-and-installation/manage-storage-host/#activate-storaged
