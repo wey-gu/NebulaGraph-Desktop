@@ -1,0 +1,173 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: 'Create draft release'
+        type: boolean
+        default: true
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  prepare-images:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Set up Docker
+        run: |
+          docker info
+          docker version
+        
+      - name: Pull and save Docker images
+        run: |
+          npm run prepare-images
+        
+      - name: Verify images and manifest
+        run: |
+          if [ ! -f "assets/NebulaGraph-Desktop/images/manifest.json" ]; then
+            echo "❌ Manifest file not found"
+            exit 1
+          fi
+          for img in graphd metad storaged studio; do
+            if [ ! -f "assets/NebulaGraph-Desktop/images/${img}.tar" ]; then
+              echo "❌ Image file ${img}.tar not found"
+              exit 1
+            fi
+          done
+          echo "✅ All image files verified"
+          
+      - name: Upload Docker images
+        uses: actions/upload-artifact@v4
+        with:
+          name: nebula-docker-images
+          path: assets/NebulaGraph-Desktop/images/
+          compression-level: 9
+          retention-days: 1
+
+  build:
+    needs: prepare-images
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            artifact_name: "*.AppImage"
+            platform: linux
+          - os: windows-latest
+            artifact_name: "*.exe"
+            platform: win
+          - os: macos-latest
+            artifact_name: "*.dmg"
+            platform: mac
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd renderer && npm ci
+
+      - name: Download Docker images
+        uses: actions/download-artifact@v4
+        with:
+          name: nebula-docker-images
+          path: assets/NebulaGraph-Desktop/images/
+
+      - name: Verify downloaded images
+        shell: bash
+        run: |
+          if [ ! -f "assets/NebulaGraph-Desktop/images/manifest.json" ]; then
+            echo "❌ Manifest file not found after download"
+            exit 1
+          fi
+
+      - name: Build Electron app
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Create distribution
+        run: npm run dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nebula-desktop-${{ matrix.platform }}
+          path: |
+            release/${{ matrix.artifact_name }}
+            assets/NebulaGraph-Desktop/images/manifest.json
+          compression-level: 9
+          retention-days: 5
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.draft
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: nebula-desktop-*
+          merge-multiple: true
+        
+      - name: Display structure of downloaded files
+        run: ls -R artifacts/
+        
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/*.exe
+            artifacts/*.dmg
+            artifacts/*.AppImage
+          draft: ${{ github.event.inputs.draft || true }}
+          prerelease: false
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  cleanup:
+    needs: release
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete artifacts
+        uses: geekyeggo/delete-artifact@v2
+        with:
+          name: |
+            nebula-docker-images
+            nebula-desktop-* 

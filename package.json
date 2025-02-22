@@ -13,38 +13,48 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "postinstall": "cd renderer && npm install",
-    "test:docker": "tsc -p electron/tsconfig.json && node dist/main/test-docker.js"
+    "test:docker": "tsc -p electron/tsconfig.json && node dist/main/test-docker.js",
+    "prepare-images": "node scripts/prepare-images.js"
   },
   "build": {
     "appId": "com.nebulagraph.desktop",
     "productName": "NebulaGraph Desktop",
     "files": [
       "dist/**/*",
-      "renderer/out/**/*",
-      "assets/**/*"
+      "renderer/out/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/NebulaGraph-Desktop",
+        "to": "NebulaGraph-Desktop",
+        "filter": ["**/*"]
+      }
     ],
     "directories": {
       "output": "release"
     },
     "mac": {
       "category": "public.app-category.developer-tools",
-      "target": [
-        "dmg"
-      ]
+      "target": ["dmg"],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
     },
     "win": {
-      "target": [
-        "nsis"
-      ]
+      "target": ["nsis"]
     },
     "linux": {
-      "target": [
-        "AppImage"
-      ]
+      "target": ["AppImage"],
+      "category": "Development"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "runAfterFinish": true
     }
   },
   "author": "NebulaGraph Community",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "private": true,
   "devDependencies": {
     "@types/electron": "^1.4.38",
