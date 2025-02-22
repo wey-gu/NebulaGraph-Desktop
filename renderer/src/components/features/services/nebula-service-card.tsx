@@ -166,11 +166,25 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
 
             {/* Action Buttons */}
             <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                className={cn(
+                  "rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300",
+                  "hover:bg-purple-100/10 hover:text-purple-400 hover:border-purple-200/20",
+                  "z-20",
+                  showLogs && "bg-purple-100/10 text-purple-400 border-purple-200/20"
+                )}
+                onClick={() => setShowLogs(true)}
+              >
+                <Terminal className="w-4 h-4" />
+                <span className="sr-only">View logs</span>
+              </Button>
               {service.status === 'stopped' ? (
                 <Button
                   variant="outline"
                   size="icon"
-                  className="rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-green-100/10 hover:text-green-400 hover:border-green-200/20"
+                  className="rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-green-100/10 hover:text-green-400 hover:border-green-200/20 z-20"
                   disabled={!!loadingAction}
                   onClick={() => handleServiceAction('start')}
                 >
@@ -185,7 +199,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                   <Button
                     variant="outline"
                     size="icon"
-                    className="rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-red-100/10 hover:text-red-400 hover:border-red-200/20"
+                    className="rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-red-100/10 hover:text-red-400 hover:border-red-200/20 z-20"
                     disabled={!!loadingAction}
                     onClick={() => handleServiceAction('stop')}
                   >
@@ -198,7 +212,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                   <Button
                     variant="outline"
                     size="icon"
-                    className="rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-yellow-100/10 hover:text-yellow-400 hover:border-yellow-200/20"
+                    className="rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-yellow-100/10 hover:text-yellow-400 hover:border-yellow-200/20 z-20"
                     disabled={!!loadingAction}
                     onClick={() => handleServiceAction('restart')}
                   >
@@ -251,23 +265,6 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
               </div>
             </div>
           )}
-        </div>
-
-        {/* Move logs button to a more prominent position */}
-        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-          <Button
-            variant="outline"
-            size="icon"
-            className={cn(
-              "rounded-lg transition-all duration-300",
-              "hover:bg-purple-100/10 hover:text-purple-400 hover:border-purple-200/20",
-              showLogs && "bg-purple-100/10 text-purple-400 border-purple-200/20"
-            )}
-            onClick={() => setShowLogs(true)}
-          >
-            <Terminal className="w-4 h-4" />
-            <span className="sr-only">View logs</span>
-          </Button>
         </div>
       </div>
 
