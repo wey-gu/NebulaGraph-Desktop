@@ -17,6 +17,17 @@ export interface LogEntry {
   level: 'info' | 'error' | 'warn';
 }
 
+export interface DockerSystemStatus {
+  isInstalled: boolean;
+  isRunning: boolean;
+  version?: string;
+  compose?: {
+    isInstalled: boolean;
+    version?: string;
+  };
+  error?: string;
+}
+
 export interface DockerStatus {
   isRunning: boolean;
   services: Record<string, ServiceStatus>;
@@ -27,6 +38,7 @@ export interface DockerAPI {
   start: () => Promise<{ success: boolean; error?: string }>;
   stop: () => Promise<{ success: boolean; error?: string }>;
   status: () => Promise<boolean>;
+  systemStatus: () => Promise<DockerSystemStatus>;
   toggle: (start: boolean) => Promise<boolean>;
   getServices: () => Promise<Record<string, ServiceStatus>>;
   getLogs: (serviceName: string) => Promise<LogEntry[]>;

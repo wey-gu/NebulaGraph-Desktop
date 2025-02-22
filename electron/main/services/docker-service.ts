@@ -2,6 +2,7 @@ import { exec as execCallback, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs';
+import { DockerChecker } from './docker-checker';
 
 const exec = promisify(execCallback);
 
@@ -27,10 +28,22 @@ interface ServiceConfig {
   dependencies: string[];
 }
 
+interface DockerSystemStatus {
+  isInstalled: boolean;
+  isRunning: boolean;
+  version?: string;
+  compose?: {
+    isInstalled: boolean;
+    version?: string;
+  };
+  error?: string;
+}
+
 export class DockerService {
-  private composeFilePath: string;
-  private dataDir: string;
-  private logsDir: string;
+  private composeFilePath: string = '';
+  private dataDir: string = '';
+  private logsDir: string = '';
+  private dockerChecker: DockerChecker;
   private serviceConfigs: Record<string, ServiceConfig> = {
     metad: {
       name: 'metad',
@@ -67,49 +80,18 @@ export class DockerService {
   };
 
   constructor() {
-    const assetsDir = path.join(process.cwd(), 'assets', 'NebulaGraph-Desktop');
-    this.composeFilePath = path.join(assetsDir, 'docker-compose.yml');
-    this.dataDir = path.join(assetsDir, 'data');
-    this.logsDir = path.join(assetsDir, 'logs');
+    this.dockerChecker = new DockerChecker();
+    this.initializePaths();
+  }
+
+  private async initializePaths() {
+    const resourcesPath = await this.dockerChecker.getResourcesPath();
+    this.composeFilePath = path.join(resourcesPath, 'docker-compose.yml');
+    this.dataDir = path.join(resourcesPath, 'data');
+    this.logsDir = path.join(resourcesPath, 'logs');
     
     this.ensureDirectories();
     console.log('🐳 Initializing Docker service with compose file:', this.composeFilePath);
-
-    // Initialize default services
-    this.serviceConfigs = {
-      metad: {
-        name: 'metad',
-        displayName: 'Meta Service',
-        ports: ['9559', '19559', '19560'],
-        healthCheckPort: 19559,
-        requiredPorts: [9559, 19559, 19560],
-        dependencies: []
-      },
-      storaged: {
-        name: 'storaged',
-        displayName: 'Storage Service',
-        ports: ['9779', '19779', '19780'],
-        healthCheckPort: 19779,
-        requiredPorts: [9779, 19779, 19780],
-        dependencies: ['metad']
-      },
-      graphd: {
-        name: 'graphd',
-        displayName: 'Graph Service',
-        ports: ['9669', '19669', '19670'],
-        healthCheckPort: 19669,
-        requiredPorts: [9669, 19669, 19670],
-        dependencies: ['storaged']
-      },
-      studio: {
-        name: 'studio',
-        displayName: 'Studio',
-        ports: ['7001'],
-        healthCheckPort: 7001,
-        requiredPorts: [7001],
-        dependencies: ['graphd']
-      }
-    };
   }
 
   private ensureDirectories() {
@@ -129,13 +111,24 @@ export class DockerService {
   }
 
   async checkDockerStatus(): Promise<boolean> {
-    try {
-      await exec('docker info');
-      return true;
-    } catch (error) {
-      console.error('Docker is not running:', error);
+    const status = await this.dockerChecker.checkDocker();
+    if (!status.isInstalled) {
+      console.error('Docker is not installed:', status.error);
       return false;
     }
+    if (!status.isRunning) {
+      console.error('Docker is not running:', status.error);
+      return false;
+    }
+    if (!status.compose?.isInstalled) {
+      console.error('Docker Compose is not available:', status.error);
+      return false;
+    }
+    return true;
+  }
+
+  async getSystemStatus(): Promise<DockerSystemStatus> {
+    return this.dockerChecker.checkDocker();
   }
 
   private async checkPortAvailability(ports: number[]): Promise<{ available: boolean; conflictingPorts: number[] }> {
@@ -216,21 +209,62 @@ export class DockerService {
     onProgress?: (status: { service: string; attempt: number; maxAttempts: number; state: string }) => void
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      if (!await this.checkDockerStatus()) {
-        return { success: false, error: 'Docker is not running' };
+      // Check Docker status
+      const dockerStatus = await this.dockerChecker.checkDocker();
+      
+      if (!dockerStatus.isInstalled) {
+        return { 
+          success: false, 
+          error: 'Docker is not installed. Please install Docker Desktop first.' 
+        };
+      }
+      
+      if (!dockerStatus.isRunning) {
+        return { 
+          success: false, 
+          error: 'Docker is not running. Please start Docker Desktop first.' 
+        };
+      }
+      
+      if (!dockerStatus.compose?.isInstalled) {
+        return { 
+          success: false, 
+          error: 'Docker Compose is not available. Please install Docker Compose v2.' 
+        };
       }
 
-      // Check all required ports
+      // Ensure images are loaded
+      const imagesLoaded = await this.dockerChecker.ensureImagesLoaded(
+        (current, total, imageName) => {
+          console.log(`Loading image ${current}/${total}: ${imageName}`);
+          onProgress?.({
+            service: 'system',
+            attempt: current,
+            maxAttempts: total,
+            state: `Loading image: ${imageName}`
+          });
+        }
+      );
+
+      if (!imagesLoaded) {
+        return { 
+          success: false, 
+          error: 'Failed to load required Docker images. Please check your internet connection and try again.' 
+        };
+      }
+
+      // Check ports
       const allPorts = Object.values(this.serviceConfigs).flatMap(config => config.requiredPorts);
       const { available, conflictingPorts } = await this.checkPortAvailability(allPorts);
       
       if (!available) {
         return { 
           success: false, 
-          error: `Ports ${conflictingPorts.join(', ')} are already in use` 
+          error: `Ports ${conflictingPorts.join(', ')} are already in use. Please stop any services using these ports.` 
         };
       }
 
+      // Start services
       const { stdout, stderr } = await exec(`docker compose -f "${this.composeFilePath}" up -d`);
       console.log('Docker Compose up output:', stdout);
       
@@ -238,7 +272,7 @@ export class DockerService {
         console.warn('Docker Compose up warnings:', stderr);
       }
 
-      // Wait for all services to be healthy
+      // Wait for services
       const services = Object.keys(this.serviceConfigs);
       let allHealthy = true;
       let unhealthyServices: string[] = [];
@@ -246,7 +280,7 @@ export class DockerService {
       for (const service of services) {
         const healthy = await this.waitForHealthCheck(
           service,
-          60, // 2 minutes timeout (with 2s interval)
+          60,
           2000,
           onProgress
         );
@@ -257,7 +291,6 @@ export class DockerService {
         }
       }
 
-      // If some services are not fully healthy but at least starting, return success
       if (!allHealthy) {
         const servicesStatus = await this.getServicesStatus();
         const anyStillStarting = Object.values(servicesStatus).some(
@@ -267,13 +300,13 @@ export class DockerService {
         if (anyStillStarting) {
           return { 
             success: true,
-            error: 'Some services are still initializing but will be ready soon'
+            error: 'Some services are still initializing but will be ready soon. You can check their status in the dashboard.'
           };
         }
 
         return {
           success: false,
-          error: `Services ${unhealthyServices.join(', ')} failed to start properly`
+          error: `Services ${unhealthyServices.join(', ')} failed to start properly. Please check the logs for more details.`
         };
       }
 
@@ -282,7 +315,7 @@ export class DockerService {
       console.error('Failed to start services:', error);
       return { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Failed to start services' 
+        error: error instanceof Error ? error.message : 'Failed to start services. Please try again.' 
       };
     }
   }

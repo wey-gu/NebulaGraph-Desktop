@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { Globe, HomeIcon, ArrowUpRight, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ServicesSkeleton } from '@/components/features/services/services-skeleton'
+import { DockerSetupGuide } from '@/components/features/docker/docker-setup-guide'
 
 declare global {
   interface Window {
@@ -28,59 +29,80 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [showDashboard, setShowDashboard] = useState<boolean>(false)
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true)
+  const [showDockerSetup, setShowDockerSetup] = useState<boolean>(false)
 
   useEffect(() => {
-    // Check if the Electron API is available
-    if (!window.electronAPI?.docker) {
-      console.error('❌ Electron API not available');
-      setStatus('Error: Electron API not available');
-      toast.error('Application Error', {
-        description: 'Failed to initialize system components.'
-      });
-      return;
-    }
-    
-    console.log('✓ Electron API available');
     checkDockerStatus();
   }, []);
 
   const checkDockerStatus = async () => {
-    if (!window.electronAPI?.docker) return;
-    
-    console.log('🔍 Checking Docker status...')
     try {
-      const dockerRunning = await window.electronAPI.docker.status()
-      console.log('✓ Docker status:', dockerRunning)
-      setIsDockerRunning(dockerRunning)
-      setStatus(dockerRunning ? 'Docker is running' : 'Docker is not running')
-      
-      if (dockerRunning) {
-        await refreshServices()
+      // Try to run docker --version first to check if Docker CLI is installed
+      try {
+        const result = await window.electronAPI.docker.status();
+        setIsDockerRunning(result);
+        
+        if (!result) {
+          setStatus('Docker is not running');
+          setShowDockerSetup(true);
+          return;
+        }
+
+        // Check if Docker Compose is available
+        try {
+          const startResult = await window.electronAPI.docker.start();
+          if (startResult.error?.toLowerCase().includes('docker compose') || 
+              startResult.error?.toLowerCase().includes('compose')) {
+            setStatus('Docker Compose is not available');
+            setShowDockerSetup(true);
+            return;
+          }
+        } catch (error: any) {
+          const errorMessage = typeof error === 'string' ? error : error?.message || error?.toString();
+          if (errorMessage.toLowerCase().includes('compose')) {
+            setStatus('Docker Compose is not available');
+            setShowDockerSetup(true);
+            return;
+          }
+        }
+
+        // If we get here, Docker is running and Compose is available
+        setStatus('Docker is running');
+        setShowDockerSetup(false);
+        
+        // Check services status
+        await refreshServices();
+      } catch (error: any) {
+        const errorMessage = typeof error === 'string' ? error : error?.message || error?.toString();
+        
+        if (errorMessage.toLowerCase().includes('command not found') || 
+            errorMessage.toLowerCase().includes('no such file or directory')) {
+          setStatus('Docker CLI not found');
+          setShowDockerSetup(true);
+          return;
+        }
+
+        throw error; // Re-throw other errors to be caught below
       }
     } catch (error) {
-      console.error('✕ Docker status check failed:', error)
-      setStatus('Error checking Docker status')
-      toast.error('Failed to check Docker status', {
-        description: 'Please make sure Docker is installed and running properly.'
-      })
+      console.error('Error checking Docker status:', error);
+      setStatus('Error checking Docker status');
+      setShowDockerSetup(true);
     } finally {
-      setIsInitialLoading(false)
+      setIsInitialLoading(false);
     }
-  }
+  };
 
   const refreshServices = async () => {
-    if (!window.electronAPI?.docker) return;
-    
-    console.log('🔄 Refreshing services...')
     try {
-      const services = await window.electronAPI.docker.getServices()
-      console.log('✓ Services refreshed:', services)
-      setServices(services)
+      const services = await window.electronAPI.docker.getServices();
+      console.log('✓ Services refreshed:', services);
+      setServices(services);
     } catch (error) {
-      console.error('✕ Service refresh failed:', error)
-      toast.error('Failed to refresh services')
+      console.error('✕ Service refresh failed:', error);
+      toast.error('Failed to refresh services');
     }
-  }
+  };
 
   const toggleDocker = async (start: boolean) => {
     if (!window.electronAPI?.docker) return;
@@ -106,38 +128,53 @@ export default function Home() {
   }
 
   const startNebulaGraph = async () => {
-    if (!window.electronAPI?.docker) return;
+    console.log('▶️ Starting NebulaGraph services...');
+    setIsLoading(true);
+    setStatus('Starting NebulaGraph services...');
     
-    console.log('▶️ Starting NebulaGraph services...')
-    setIsLoading(true)
-    setStatus('Starting NebulaGraph services...')
     try {
-      const result = await window.electronAPI.docker.start()
-      console.log('✓ Start result:', result)
+      const result = await window.electronAPI.docker.start();
+      console.log('✓ Start result:', result);
       
       if (result.success) {
-        setStatus('NebulaGraph services started successfully')
-        const updatedServices = await refreshServices()
-        console.log('✓ Services after start:', updatedServices)
+        setStatus('NebulaGraph services started successfully');
+        await refreshServices();
         toast.success('NebulaGraph services started', {
           description: 'All services are now running.'
-        })
+        });
       } else {
-        console.error('✕ Start failed:', result.error)
-        setStatus(`Failed to start services: ${result.error}`)
-        toast.error('Failed to start services', {
-          description: result.error || 'An unknown error occurred.'
-        })
+        console.error('✕ Start failed:', result.error);
+        setStatus(`Failed to start services: ${result.error}`);
+        
+        // Show appropriate error message based on the error
+        if (result.error?.includes('Docker is not installed')) {
+          toast.error('Docker is not installed', {
+            description: 'Please install Docker Desktop from https://www.docker.com/products/docker-desktop'
+          });
+        } else if (result.error?.includes('Docker is not running')) {
+          toast.error('Docker is not running', {
+            description: 'Please start Docker Desktop and try again'
+          });
+        } else if (result.error?.includes('Docker Compose')) {
+          toast.error('Docker Compose is not available', {
+            description: 'Please install Docker Compose v2'
+          });
+        } else {
+          toast.error('Failed to start services', {
+            description: result.error || 'An unknown error occurred.'
+          });
+        }
       }
     } catch (error) {
-      console.error('✕ Start error:', error)
-      setStatus('Error starting services')
+      console.error('✕ Start error:', error);
+      setStatus('Error starting services');
       toast.error('Error starting services', {
         description: 'Please try again or check the logs for more details.'
-      })
+      });
     }
-    setIsLoading(false)
-  }
+    
+    setIsLoading(false);
+  };
 
   const stopNebulaGraph = async () => {
     if (!window.electronAPI?.docker) return;
@@ -193,6 +230,9 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0B0F17] text-black dark:text-white">
+      {showDockerSetup && (
+        <DockerSetupGuide onComplete={checkDockerStatus} />
+      )}
       {!showDashboard ? (
         <HeroSection
           title="NebulaGraph Desktop"
@@ -201,7 +241,7 @@ export default function Home() {
             gradient: "Distributed Graph at Scale",
           }}
           description="NebulaGraph is a popular open-source graph database that can handle large volumes of data with milliseconds of latency, scale up quickly, and have the ability to perform fast graph analytics. NebulaGraph has been widely used for social media, recommendation systems, knowledge graphs, security, capital flows, AI, etc."
-          ctaText="Start NebulaGraph Desktop"
+          ctaText="Launch NebulaGraph Desktop Console"
           ctaHref="https://github.com/vesoft-inc/nebula"
           bottomImage={{
             light: "/nebula_arch.mp4",
