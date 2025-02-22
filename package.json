@@ -1,0 +1,61 @@
+{
+  "name": "nebulagraph-desktop",
+  "version": "0.1.0",
+  "description": "Cross-platform desktop application for running NebulaGraph with Docker",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "dev": "concurrently \"cd renderer && npm run dev\" \"cross-env NODE_ENV=development npm run dev:electron\"",
+    "dev:electron": "tsc -p electron/tsconfig.json && electron .",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "build:next": "cd renderer && next build",
+    "build": "cross-env NODE_ENV=production npm run build:electron && npm run build:next",
+    "start": "cross-env NODE_ENV=production electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "postinstall": "cd renderer && npm install",
+    "test:docker": "tsc -p electron/tsconfig.json && node dist/main/test-docker.js"
+  },
+  "build": {
+    "appId": "com.nebulagraph.desktop",
+    "productName": "NebulaGraph Desktop",
+    "files": [
+      "dist/**/*",
+      "renderer/out/**/*",
+      "assets/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    }
+  },
+  "author": "NebulaGraph Community",
+  "license": "MIT",
+  "private": true,
+  "devDependencies": {
+    "@types/electron": "^1.4.38",
+    "@types/node": "^22.13.5",
+    "concurrently": "^9.1.2",
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "electron-is-dev": "^3.0.1",
+    "lucide-react": "^0.475.0"
+  }
+}
