@@ -87,7 +87,7 @@ services:
       # - ./logs/graph:/logs:rw
 
   studio:
-    image: vesoft/nebula-graph-studio:v3.8.0
+    image: vesoft/nebula-graph-studio:v3.10.0
     environment:
       USER: root
     ports:

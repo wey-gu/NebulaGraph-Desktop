@@ -59,7 +59,7 @@
 - vesoft/nebula-graphd:v3.8.0
 - vesoft/nebula-metad:v3.8.0
 - vesoft/nebula-storaged:v3.8.0
-- vesoft/studio:v3.8.0
+- vesoft/nebula-graph-studio:v3.10.0
 
 #### Data Persistence Strategy
 - Map volumes to user-specific directories:
