@@ -21,6 +21,10 @@ const IMAGES = {
   studio: {
     name: 'vesoft/nebula-graph-studio',
     tag: 'v3.10.0'
+  },
+  console: {
+    name: 'vesoft/nebula-console',
+    tag: 'nightly'
   }
 };
 

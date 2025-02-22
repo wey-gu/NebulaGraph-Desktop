@@ -130,18 +130,26 @@ export class DockerService {
   async getSystemStatus(): Promise<DockerSystemStatus> {
     return this.dockerChecker.checkDocker();
   }
-
   private async checkPortAvailability(ports: number[]): Promise<{ available: boolean; conflictingPorts: number[] }> {
     const conflictingPorts: number[] = [];
     
     for (const port of ports) {
       try {
-        const { stdout } = await exec(`lsof -i :${port}`);
-        if (stdout.trim()) {
-          conflictingPorts.push(port);
+        if (process.platform === 'win32') {
+          // Windows command to check port usage
+          const { stdout } = await exec(`netstat -ano | findstr :${port}`);
+          if (stdout.trim()) {
+            conflictingPorts.push(port);
+          }
+        } else {
+          // macOS/Linux command
+          const { stdout } = await exec(`lsof -i :${port}`);
+          if (stdout.trim()) {
+            conflictingPorts.push(port);
+          }
         }
       } catch (error) {
-        // Port is available if lsof command fails (no process using the port)
+        // Port is available if command fails (no process using the port)
         continue;
       }
     }
@@ -234,6 +242,13 @@ export class DockerService {
       }
 
       // Ensure images are loaded
+      onProgress?.({
+        service: 'system',
+        attempt: 0,
+        maxAttempts: 1,
+        state: 'Checking Docker images...'
+      });
+
       const imagesLoaded = await this.dockerChecker.ensureImagesLoaded(
         (current, total, imageName) => {
           console.log(`Loading image ${current}/${total}: ${imageName}`);
@@ -254,6 +269,13 @@ export class DockerService {
       }
 
       // Check ports
+      onProgress?.({
+        service: 'system',
+        attempt: 0,
+        maxAttempts: 1,
+        state: 'Checking port availability...'
+      });
+
       const allPorts = Object.values(this.serviceConfigs).flatMap(config => config.requiredPorts);
       const { available, conflictingPorts } = await this.checkPortAvailability(allPorts);
       
@@ -265,6 +287,13 @@ export class DockerService {
       }
 
       // Start services
+      onProgress?.({
+        service: 'system',
+        attempt: 0,
+        maxAttempts: 1,
+        state: 'Starting services...'
+      });
+
       const { stdout, stderr } = await exec(`docker compose -f "${this.composeFilePath}" up -d`);
       console.log('Docker Compose up output:', stdout);
       
@@ -272,38 +301,53 @@ export class DockerService {
         console.warn('Docker Compose up warnings:', stderr);
       }
 
-      // Wait for services
+      // Initial delay to let services start
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Wait for services with periodic status updates
       const services = Object.keys(this.serviceConfigs);
-      let allHealthy = true;
-      let unhealthyServices: string[] = [];
+      let retries = 0;
+      const maxRetries = 30; // 30 * 2 seconds = 60 seconds total timeout
+      let allHealthy = false;
 
-      for (const service of services) {
-        const healthy = await this.waitForHealthCheck(
-          service,
-          60,
-          2000,
-          onProgress
-        );
+      while (retries < maxRetries && !allHealthy) {
+        let currentStatus = await this.getServicesStatus();
+        let stillStarting = false;
+        let hasErrors = false;
 
-        if (!healthy) {
-          unhealthyServices.push(this.serviceConfigs[service].name);
-          allHealthy = false;
+        for (const [serviceName, status] of Object.entries(currentStatus)) {
+          onProgress?.({
+            service: serviceName,
+            attempt: retries + 1,
+            maxAttempts: maxRetries,
+            state: `${status.status} (${status.health})`
+          });
+
+          if (status.status === 'running' && status.health === 'starting') {
+            stillStarting = true;
+          } else if (status.status === 'error' || status.health === 'unhealthy') {
+            hasErrors = true;
+          }
+        }
+
+        if (!stillStarting && !hasErrors) {
+          allHealthy = true;
+          break;
+        }
+
+        if (!allHealthy) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          retries++;
         }
       }
 
-      if (!allHealthy) {
-        const servicesStatus = await this.getServicesStatus();
-        const anyStillStarting = Object.values(servicesStatus).some(
-          s => s.status === 'running' && s.health === 'starting'
-        );
+      // Final status check
+      const finalStatus = await this.getServicesStatus();
+      const unhealthyServices = Object.entries(finalStatus)
+        .filter(([_, status]) => status.status === 'error' || status.health === 'unhealthy')
+        .map(([name, _]) => name);
 
-        if (anyStillStarting) {
-          return { 
-            success: true,
-            error: 'Some services are still initializing but will be ready soon. You can check their status in the dashboard.'
-          };
-        }
-
+      if (unhealthyServices.length > 0) {
         return {
           success: false,
           error: `Services ${unhealthyServices.join(', ')} failed to start properly. Please check the logs for more details.`

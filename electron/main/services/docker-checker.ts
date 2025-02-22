@@ -44,6 +44,10 @@ export class DockerChecker {
     this.manifestPath = path.join(this.imagesPath, 'manifest.json');
   }
 
+  private getContainerName(serviceName: string): string {
+    return `nebulagraph-desktop-${serviceName}-1`;
+  }
+
   async checkDockerSystem(): Promise<DockerSystemStatus> {
     try {
       // Check if Docker CLI is installed
@@ -206,5 +210,34 @@ export class DockerChecker {
 
   async getResourcesPath(): Promise<string> {
     return this.resourcesPath;
+  }
+
+  private async getServiceHealth(serviceName: string): Promise<'healthy' | 'unhealthy' | 'starting' | 'unknown'> {
+    try {
+      // Special case for console service - it doesn't need health checks
+      // if (serviceName === 'console') {
+      //   const { stdout: containerInfo } = await execAsync(
+      //     `docker inspect ${this.getContainerName(serviceName)}`
+      //   );
+      //   const container = JSON.parse(containerInfo)[0];
+      //   return container?.State?.Running ? 'healthy' : 'unknown';
+      // }
+
+      // First check Docker health status
+      const { stdout: healthStatus } = await execAsync(
+        `docker ps --filter "name=${this.getContainerName(serviceName)}" --format "{{.Status}}"`
+      );
+
+      const status = healthStatus.trim();
+      if (status.includes('(healthy)')) return 'healthy';
+      if (status.includes('(unhealthy)')) return 'unhealthy';
+      if (status.includes('starting')) return 'starting';
+      if (status.includes('Up')) return 'starting'; // Consider "Up" state as starting
+
+      return 'unknown';
+    } catch (error) {
+      console.error('Failed to check service health:', error);
+      return 'unknown';
+    }
   }
 } 

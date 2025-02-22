@@ -524,7 +524,7 @@ export default function Home() {
                   </button>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     {Object.values(services).some(s => s.name === 'studio' && s.status === 'running')
-                      ? 'Note: `root@graphd:9669` password: `nebula`'
+                      ? 'Note: hostname is `graphd`'
                       : ''}
                   </p>
                 </div>
