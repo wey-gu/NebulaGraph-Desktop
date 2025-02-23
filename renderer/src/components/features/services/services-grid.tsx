@@ -8,6 +8,35 @@ interface ServicesGridProps {
 }
 
 export function ServicesGrid({ services, isLoading, onServiceUpdate }: ServicesGridProps) {
+  // Sort services in the correct order: metad -> storaged -> graphd -> studio
+  const serviceOrder = ['metad', 'storaged', 'graphd', 'studio'];
+  const sortedServices = Object.entries(services).sort(([a], [b]) => {
+    return serviceOrder.indexOf(a) - serviceOrder.indexOf(b);
+  });
+
+  // Calculate service counts
+  const totalServices = Object.keys(services).length;
+  const notCreatedCount = Object.values(services).filter(s => 
+    s.status === 'not_created' || s.health.status === 'not_created'
+  ).length;
+  const runningCount = Object.values(services).filter(s => 
+    s.status === 'running' && s.health.status === 'healthy'
+  ).length;
+
+  // Get the status message
+  const getStatusMessage = () => {
+    if (notCreatedCount === totalServices) {
+      return `${totalServices} services ready to be created`;
+    }
+    if (runningCount === totalServices) {
+      return `All ${totalServices} services running`;
+    }
+    if (runningCount > 0) {
+      return `${runningCount} of ${totalServices} services running`;
+    }
+    return `${totalServices} services`;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -15,11 +44,11 @@ export function ServicesGrid({ services, isLoading, onServiceUpdate }: ServicesG
           Services
         </h2>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          {Object.keys(services).length} service{Object.keys(services).length === 1 ? '' : 's'}
+          {getStatusMessage()}
         </p>
       </div>
       <div className="grid gap-4">
-        {Object.entries(services).map(([id, service]) => (
+        {sortedServices.map(([id, service]) => (
           <NebulaServiceCard
             key={id}
             service={service}

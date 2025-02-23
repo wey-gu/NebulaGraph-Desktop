@@ -51,18 +51,21 @@ export default function Home() {
       
       // Check if any service is still starting
       const hasStartingServices = Object.values(services).some(
-        s => s.status === 'running' && s.health.status === 'starting'
+        s => s.health.status === 'starting'
       )
 
       // Check service states and set appropriate status
-      const runningCount = Object.values(services).filter(s => s.status === 'running' && s.health.status === 'healthy').length
+      const runningCount = Object.values(services).filter(s => s.health.status === 'healthy').length
       const totalServices = Object.keys(services).length
-      const errorCount = Object.values(services).filter(s => s.status === 'error' || s.health.status === 'unhealthy').length
+      const errorCount = Object.values(services).filter(s => s.health.status === 'unhealthy').length
+      const notCreatedCount = Object.values(services).filter(s => s.status === 'not_created' || s.health.status === 'not_created').length
       
       if (hasStartingServices) {
         setStatus('Services are starting...')
       } else if (errorCount > 0) {
         setStatus(`${errorCount} service${errorCount > 1 ? 's' : ''} in error state`)
+      } else if (notCreatedCount === totalServices) {
+        setStatus('Services not created yet')
       } else if (runningCount === 0) {
         setStatus('All services are stopped')
       } else if (runningCount === totalServices) {
@@ -223,7 +226,7 @@ export default function Home() {
     if (!window.electronAPI?.docker) return
     
     console.log('🌐 Opening NebulaGraph Studio...')
-    if (!Object.values(services).some(s => s.name === 'studio' && s.status === 'running')) {
+    if (!Object.values(services).some(s => s.name === 'studio' && s.health.status === 'healthy')) {
       console.warn('⚠️ Studio is not running')
       toast.error('Studio is not available', {
         description: 'Please make sure all services are running first.'
@@ -355,18 +358,18 @@ export default function Home() {
                 <div className="space-y-2">
                   <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Active Services</h3>
                   <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                    {Object.values(services).filter(s => s.status === 'running').length}
+                    {Object.values(services).filter(s => s.health.status === 'healthy').length}
                     <span className="text-sm font-normal text-gray-500 dark:text-gray-400"> / {Object.keys(services).length}</span>
                   </p>
                   <div className="flex items-center gap-2">
                     <div className="flex-1 h-1 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                       <div 
                         className="h-full bg-gradient-to-r from-purple-500 to-pink-500 dark:from-purple-400 dark:to-pink-400 rounded-full transition-all duration-500 group-hover:scale-x-105"
-                        style={{ width: `${Object.keys(services).length === 0 ? 0 : Math.round((Object.values(services).filter(s => s.status === 'running').length / Object.keys(services).length) * 100)}%` }}
+                        style={{ width: `${Object.keys(services).length === 0 ? 0 : Math.round((Object.values(services).filter(s => s.health.status === 'healthy').length / Object.keys(services).length) * 100)}%` }}
                       />
                     </div>
                     <span className="text-xs text-gray-500 dark:text-gray-400">
-                      {Object.keys(services).length === 0 ? '0%' : `${Math.round((Object.values(services).filter(s => s.status === 'running').length / Object.keys(services).length) * 100)}%`}
+                      {Object.keys(services).length === 0 ? '0%' : `${Math.round((Object.values(services).filter(s => s.health.status === 'healthy').length / Object.keys(services).length) * 100)}%`}
                     </span>
                   </div>
                 </div>
@@ -394,15 +397,15 @@ export default function Home() {
                 <div className="space-y-2">
                   <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Health</h3>
                   <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                    {Object.values(services).filter(s => s.status === 'error').length === 0 ? 'Good' : 'Warning'}
+                    {Object.values(services).filter(s => s.health.status === 'unhealthy').length === 0 ? 'Good' : 'Warning'}
                   </p>
                   <div className="flex items-center gap-2">
                     <div className={cn(
                       "w-2 h-2 rounded-full",
-                      Object.values(services).filter(s => s.status === 'error').length === 0 ? "bg-green-500" : "bg-yellow-500"
+                      Object.values(services).filter(s => s.health.status === 'unhealthy').length === 0 ? "bg-green-500" : "bg-yellow-500"
                     )} />
                     <span className="text-xs text-gray-500 dark:text-gray-400">
-                      {Object.values(services).filter(s => s.status === 'error').length === 0 ? 'All systems normal' : `${Object.values(services).filter(s => s.status === 'error').length} issues found`}
+                      {Object.values(services).filter(s => s.health.status === 'unhealthy').length === 0 ? 'All systems normal' : `${Object.values(services).filter(s => s.health.status === 'unhealthy').length} issues found`}
                     </span>
                   </div>
                 </div>
@@ -412,15 +415,15 @@ export default function Home() {
                 <div className="space-y-2">
                   <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Studio</h3>
                   <p className="text-3xl font-bold text-gray-900 dark:text-white">
-                    {Object.values(services).some(s => s.name === 'studio' && s.status === 'running') ? 'Ready' : 'Offline'}
+                    {Object.values(services).some(s => s.name === 'studio' && s.health.status === 'healthy') ? 'Ready' : 'Offline'}
                   </p>
                   <div className="flex items-center gap-2">
                     <div className={cn(
                       "w-2 h-2 rounded-full",
-                      Object.values(services).some(s => s.name === 'studio' && s.status === 'running') ? "bg-green-500" : "bg-gray-500"
+                      Object.values(services).some(s => s.name === 'studio' && s.health.status === 'healthy') ? "bg-green-500" : "bg-gray-500"
                     )} />
                     <span className="text-xs text-gray-500 dark:text-gray-400">
-                      {Object.values(services).some(s => s.name === 'studio' && s.status === 'running') ? 'Web console ready' : 'Console unavailable'}
+                      {Object.values(services).some(s => s.name === 'studio' && s.health.status === 'healthy') ? 'Web console ready' : 'Console unavailable'}
                     </span>
                   </div>
                 </div>
@@ -531,14 +534,14 @@ export default function Home() {
                   </h2>
                   <div className={cn(
                     "px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-300",
-                    Object.values(services).some(s => s.name === 'studio' && s.status === 'running')
+                    Object.values(services).some(s => s.name === 'studio' && s.health.status === 'healthy')
                       ? "bg-green-100/10 text-green-400 group-hover:bg-green-100/20"
                       : "bg-gray-100/10 text-gray-400 group-hover:bg-gray-100/20"
                   )}>
                     <div className="flex items-center gap-2">
                       <div className={cn(
                         "w-1.5 h-1.5 rounded-full",
-                        Object.values(services).some(s => s.name === 'studio' && s.status === 'running') 
+                        Object.values(services).some(s => s.name === 'studio' && s.health.status === 'healthy') 
                           ? "bg-green-400 animate-pulse" 
                           : "bg-gray-400"
                       )} />
@@ -549,7 +552,7 @@ export default function Home() {
                 <div className="flex items-center justify-between">
                   <button
                     onClick={openStudio}
-                    disabled={!Object.values(services).some(s => s.name === 'studio' && s.status === 'running')}
+                    disabled={!Object.values(services).some(s => s.name === 'studio' && s.health.status === 'healthy')}
                     className={cn(
                       "w-full sm:w-auto px-8 py-6 transition-all duration-300",
                       "rounded-xl text-sm font-medium select-none",
@@ -573,7 +576,7 @@ export default function Home() {
                     </div>
                   </button>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {Object.values(services).some(s => s.name === 'studio' && s.status === 'running')
+                    {Object.values(services).some(s => s.name === 'studio' && s.health.status === 'healthy')
                       ? <span className="flex items-center gap-1"><Info className="w-3.5 h-3.5" /> IP address: `graphd`</span>
                       : ''}
                   </p>

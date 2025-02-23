@@ -10,9 +10,9 @@ const exec = promisify(execCallback) as (command: string, options?: { env?: Node
 
 interface ServiceStatus {
   name: string;
-  status: 'running' | 'stopped' | 'error';
+  status: 'running' | 'stopped' | 'error' | 'not_created';
   health: {
-    status: 'healthy' | 'unhealthy' | 'starting' | 'unknown';
+    status: 'healthy' | 'unhealthy' | 'starting' | 'unknown' | 'not_created';
     lastCheck: string;
     failureCount: number;
   };
@@ -581,38 +581,114 @@ export class DockerService {
     }
   }
 
+  private createNotCreatedServices(): Record<string, ServiceStatus> {
+    const services: Record<string, ServiceStatus> = {};
+    Object.entries(this.serviceConfigs).forEach(([serviceName, config]) => {
+      services[serviceName] = {
+        name: config.name,
+        status: 'not_created',
+        health: {
+          status: 'not_created',
+          lastCheck: new Date().toISOString(),
+          failureCount: 0
+        },
+        metrics: null,
+        ports: config.ports,
+        logs: []
+      };
+    });
+    return services;
+  }
+
   async getServicesStatus(): Promise<Record<string, ServiceStatus>> {
     try {
-      // Ensure directories are initialized first
-      await this.initializePaths();
-      
-      // Return cached status if services are still starting
+      logger.info('🔍 Starting getServicesStatus check...');
+
+      // Clear the cache at the start of each check
+      DockerService.lastServiceStatus = {};
+
+      // First check if compose file exists
+      const composeExists = await this.verifyComposeFile();
+      logger.info('📄 Compose file exists?', composeExists);
+      if (!composeExists) {
+        logger.info('Compose file does not exist, returning not_created status for all services');
+        return this.createNotCreatedServices();
+      }
+
+      // Check if Docker is running
+      const isDockerRunning = await this.checkDockerStatus();
+      logger.info('🐳 Docker running?', isDockerRunning);
+      if (!isDockerRunning) {
+        logger.info('Docker is not running, returning not_created status for all services');
+        return this.createNotCreatedServices();
+      }
+
+      // Check if any containers exist using docker compose ps
+      try {
+        const psCommand = process.platform === 'win32'
+          ? `cd "${path.dirname(this.composeFilePath)}" && docker compose ps -a --format "{{.Name}}"`
+          : `cd "${path.dirname(this.composeFilePath)}" && docker compose ps -a --format "{{.Name}}"`;
+        
+        logger.info('🔍 Running docker compose ps command:', psCommand);
+        const psOutput = await this.dockerChecker.execCommand(psCommand);
+        logger.info('📋 Docker compose ps output:', { output: psOutput, isEmpty: !psOutput || psOutput.trim() === '' });
+        
+        // If no containers exist yet (even if compose file exists), return all as not created
+        if (!psOutput || psOutput.trim() === '') {
+          logger.info('Compose file exists but no containers created yet, returning not_created status for all services');
+          const notCreatedServices = this.createNotCreatedServices();
+          // Update cache with not_created status
+          DockerService.lastServiceStatus = notCreatedServices;
+          return notCreatedServices;
+        }
+
+        // Log found container names
+        const containerNames = psOutput.trim().split('\n');
+        logger.info('📦 Found containers:', containerNames);
+      } catch (error) {
+        logger.error('❌ Docker compose ps command failed:', error);
+        logger.info('Docker compose ps failed, assuming no containers exist');
+        const notCreatedServices = this.createNotCreatedServices();
+        // Update cache with not_created status
+        DockerService.lastServiceStatus = notCreatedServices;
+        return notCreatedServices;
+      }
+
+      // Only use cache if services are actively starting
       if (DockerService.servicesStarting && Object.keys(DockerService.lastServiceStatus).length > 0) {
-        logger.info('🔄 Returning cached status while services are starting:', DockerService.lastServiceStatus);
+        logger.info('🔄 Using cached status while services are starting:', DockerService.lastServiceStatus);
         return DockerService.lastServiceStatus;
       }
 
       const services: Record<string, ServiceStatus> = {};
+      logger.info('🔄 Starting individual service status checks...');
+
       const statusPromises = Object.entries(this.serviceConfigs).map(async ([serviceName, config]) => {
         try {
           const containerName = this.getContainerName(serviceName);
-          logger.info(`📋 Checking status for ${serviceName} (${containerName})`);
+          logger.info(`\n📋 Checking status for ${serviceName} (${containerName})`);
           
           // Use CMD-compatible syntax for Windows
           const inspectCommand = process.platform === 'win32'
-            ? `docker inspect ${containerName} 2>nul || echo not-found`
+            ? `docker inspect ${containerName} 2>nul || echo "not-found"`
             : `docker inspect ${containerName} 2>/dev/null || echo "not-found"`;
           
+          logger.info('🔍 Running docker inspect command:', inspectCommand);
           const inspectOutput = await this.dockerChecker.execCommand(inspectCommand);
-          logger.info(`🔍 Inspect output for ${serviceName}:`, inspectOutput.substring(0, 100) + '...');
-
-          if (inspectOutput === "not-found" || inspectOutput.includes("Error: No such object")) {
-            logger.info(`❌ Container not found for ${serviceName}`);
+          logger.info(`📋 Docker inspect output for ${serviceName}:`, {
+            output: inspectOutput.substring(0, 100) + '...',
+            isNotFound: inspectOutput === "not-found" || inspectOutput.includes("Error: No such object")
+          });
+          
+          // Clean up the output and check for not-found case first
+          const cleanOutput = inspectOutput.trim();
+          if (cleanOutput === "not-found" || cleanOutput.includes("Error: No such object")) {
+            logger.info(`ℹ️ Container ${serviceName} not found, marking as not_created`);
             services[serviceName] = {
               name: config.name,
-              status: 'stopped',
+              status: 'not_created',
               health: {
-                status: 'unknown',
+                status: 'not_created',
                 lastCheck: new Date().toISOString(),
                 failureCount: 0
               },
@@ -623,46 +699,22 @@ export class DockerService {
             return;
           }
 
-          const inspectData = JSON.parse(inspectOutput)[0];
-          const isRunning = inspectData?.State?.Running === true;
-          logger.info(`⚡ Container running state for ${serviceName}:`, isRunning);
-          
-          const health = await this.getServiceHealth(serviceName);
-          logger.info(`💚 Health status for ${serviceName}:`, health);
-
-          if (isRunning) {
-            // Get metrics in parallel
-            const statsCommand = process.platform === 'win32'
-              ? `docker stats ${containerName} --no-stream --format "{{.CPUPerc}};{{.MemUsage}};{{.NetIO}}" 2>nul || echo "0%;0MB;0B"`
-              : `docker stats ${containerName} --no-stream --format "{{.CPUPerc}};{{.MemUsage}};{{.NetIO}}" 2>/dev/null || echo "0%;0MB;0B"`;
-            
-            const statsOutput = await this.dockerChecker.execCommand(statsCommand).catch(() => '0%;0MB;0B');
-            const [cpu, mem, net] = statsOutput.split(';');
-            logger.info(`📊 Metrics for ${serviceName}:`, { cpu, mem, net });
-
+          // Only try to parse JSON if we got a valid response
+          let inspectData;
+          try {
+            inspectData = JSON.parse(cleanOutput)[0];
+            logger.info(`✅ Successfully parsed inspect data for ${serviceName}:`, {
+              state: inspectData?.State?.Status,
+              running: inspectData?.State?.Running,
+              health: inspectData?.State?.Health?.Status
+            });
+          } catch (parseError: any) {
+            logger.error(`❌ Failed to parse inspect data for ${serviceName}:`, parseError);
             services[serviceName] = {
               name: config.name,
-              status: 'running',
+              status: 'not_created',
               health: {
-                status: health,
-                lastCheck: new Date().toISOString(),
-                failureCount: health === 'unhealthy' ? 1 : 0
-              },
-              metrics: {
-                cpu: cpu?.replace('%', '') || '0',
-                memory: mem?.split('/')[0].trim() || '0',
-                network: net || '0'
-              },
-              ports: config.ports,
-              logs: []
-            };
-          } else {
-            logger.info(`⏹️ Service ${serviceName} is not running`);
-            services[serviceName] = {
-              name: config.name,
-              status: 'stopped',
-              health: {
-                status: 'unknown',
+                status: 'not_created',
                 lastCheck: new Date().toISOString(),
                 failureCount: 0
               },
@@ -670,16 +722,67 @@ export class DockerService {
               ports: config.ports,
               logs: []
             };
+            return;
           }
-        } catch (error) {
-          logger.error(`❌ Error getting status for ${serviceName}:`, error);
+
+          const isRunning = inspectData?.State?.Running === true;
+          logger.info(`⚡ Container ${serviceName} running state:`, isRunning);
+          
+          if (!isRunning) {
+            logger.info(`⏹️ Container ${serviceName} exists but is not running, marking as not_created`);
+            services[serviceName] = {
+              name: config.name,
+              status: 'not_created',
+              health: {
+                status: 'not_created',
+                lastCheck: new Date().toISOString(),
+                failureCount: 0
+              },
+              metrics: null,
+              ports: config.ports,
+              logs: []
+            };
+            return;
+          }
+
+          // Get health status for running container
+          const health = await this.getServiceHealth(serviceName);
+          logger.info(`💚 Health status for ${serviceName}:`, health);
+
+          // Get metrics in parallel
+          const statsCommand = process.platform === 'win32'
+            ? `docker stats ${containerName} --no-stream --format "{{.CPUPerc}};{{.MemUsage}};{{.NetIO}}" 2>nul || echo "0%;0MB;0B"`
+            : `docker stats ${containerName} --no-stream --format "{{.CPUPerc}};{{.MemUsage}};{{.NetIO}}" 2>/dev/null || echo "0%;0MB;0B"`;
+          
+          const statsOutput = await this.dockerChecker.execCommand(statsCommand).catch(() => '0%;0MB;0B');
+          const [cpu, mem, net] = statsOutput.split(';');
+          logger.info(`📊 Metrics for ${serviceName}:`, { cpu, mem, net });
+
           services[serviceName] = {
             name: config.name,
-            status: 'error',
+            status: 'running',
             health: {
-              status: 'unknown',
+              status: health,
               lastCheck: new Date().toISOString(),
-              failureCount: 1
+              failureCount: health === 'unhealthy' ? 1 : 0
+            },
+            metrics: {
+              cpu: cpu?.replace('%', '') || '0',
+              memory: mem?.split('/')[0].trim() || '0',
+              network: net || '0'
+            },
+            ports: config.ports,
+            logs: []
+          };
+        } catch (error: any) {
+          logger.error(`❌ Error checking status for ${serviceName}:`, error);
+          services[serviceName] = {
+            name: config.name,
+            status: 'not_created',
+            health: {
+              status: 'not_created',
+              lastCheck: new Date().toISOString(),
+              failureCount: 0
             },
             metrics: null,
             ports: config.ports,
@@ -689,12 +792,22 @@ export class DockerService {
       });
 
       await Promise.all(statusPromises);
-      logger.info('✅ Final services status:', services);
-      DockerService.lastServiceStatus = services;
+      logger.info('✅ Final services status:', JSON.stringify(services, null, 2));
+      
+      // Only update cache if we have valid status for all services
+      if (Object.keys(services).length === Object.keys(this.serviceConfigs).length) {
+        DockerService.lastServiceStatus = services;
+      } else {
+        logger.warn('⚠️ Not all services were checked, not updating cache');
+      }
+      
       return services;
     } catch (error) {
       logger.error('❌ Error getting services status:', error);
-      return DockerService.lastServiceStatus;
+      const notCreatedServices = this.createNotCreatedServices();
+      // Update cache with not_created status on error
+      DockerService.lastServiceStatus = notCreatedServices;
+      return notCreatedServices;
     }
   }
 

@@ -1,8 +1,8 @@
 export interface ServiceStatus {
   name: string;
-  status: 'running' | 'stopped' | 'error';
+  status: 'running' | 'stopped' | 'error' | 'not_created';
   health: {
-    status: 'healthy' | 'unhealthy' | 'starting' | 'unknown';
+    status: 'healthy' | 'unhealthy' | 'starting' | 'unknown' | 'not_created';
     lastCheck: string;
     failureCount: number;
   };

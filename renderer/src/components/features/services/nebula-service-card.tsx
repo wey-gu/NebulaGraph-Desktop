@@ -39,7 +39,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
 
       if (result.success) {
         await onServiceUpdate();
-        toast.success(`${action.charAt(0).toUpperCase() + action.slice(1)}ed ${service.name}`);
+        toast.success(`${action.charAt(0).toUpperCase() + action.slice(1)}ed ${getServiceDisplayName(service.name)}`);
       } else if (result.error) {
         toast.error(`Failed to ${action} service`, {
           description: result.error
@@ -50,6 +50,21 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
       console.error('Failed to start service:', error);
     }
     setLoadingAction(null);
+  };
+
+  const getServiceDisplayName = (name: string) => {
+    switch (name) {
+      case 'studio':
+        return 'NebulaGraph Studio';
+      case 'metad':
+        return 'Meta Service';
+      case 'storaged':
+        return 'Storage Service';
+      case 'graphd':
+        return 'Graph Service';
+      default:
+        return name;
+    }
   };
 
   const getServiceIcon = () => {
@@ -63,7 +78,6 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
       case 'graphd':
         return <Activity className="w-5 h-5" />;
       default:
-        console.log('Unknown service name:', service.name);
         return <Server className="w-5 h-5" />;
     }
   };
@@ -73,12 +87,15 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
     return `${(memory / 1024).toFixed(1)} GB`;
   };
 
-  const formatUptime = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    return `${minutes}m`;
-  };
+  // const formatUptime = (seconds: number) => {
+  //   const hours = Math.floor(seconds / 3600);
+  //   const minutes = Math.floor((seconds % 3600) / 60);
+  //   if (hours > 0) return `${hours}h ${minutes}m`;
+  //   return `${minutes}m`;
+  // };
+
+  const isServiceNotCreated = service.status === 'not_created' || service.health.status === 'not_created';
+  const isServiceRunning = service.status === 'running' && service.health.status === 'healthy';
 
   return (
     <>
@@ -99,16 +116,16 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
             <div className="flex items-center gap-3">
               <div className={cn(
                 "p-2 rounded-lg transition-all duration-300 relative overflow-hidden",
-                service.status === 'running' 
+                isServiceRunning 
                   ? 'bg-green-100/10 text-green-400 group-hover:bg-green-100/20' 
                   : 'bg-gray-100/10 dark:bg-gray-800/50 text-gray-700 dark:text-gray-400 group-hover:bg-gray-100/20 dark:group-hover:bg-gray-800/80',
                 "before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/5 before:to-transparent",
                 "before:translate-x-[-200%] group-hover:before:translate-x-[200%] before:transition-transform before:duration-1000",
-                service.status === 'running' && "before:animate-[shimmer_2s_infinite]"
+                isServiceRunning && "before:animate-[shimmer_2s_infinite]"
               )}>
                 <div className="relative">
                   {getServiceIcon()}
-                  {service.status === 'running' && (
+                  {isServiceRunning && (
                     <div className="absolute -right-1 -bottom-1 w-2 h-2">
                       <div className="absolute inset-0 bg-green-400 rounded-full animate-ping opacity-75"></div>
                       <div className="relative bg-green-400 rounded-full w-2 h-2"></div>
@@ -119,9 +136,9 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-base font-semibold tracking-tight text-gray-900 dark:text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-purple-400 group-hover:to-pink-400 transition-all duration-300">
-                    {service.name}
+                    {getServiceDisplayName(service.name)}
                   </h3>
-                  {service.ports && service.ports.length > 0 && (
+                  {!isServiceNotCreated && service.ports && service.ports.length > 0 && (
                     <div className="flex gap-1">
                       {service.ports.map((port) => (
                         <a
@@ -144,35 +161,20 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                   <div className={cn(
                     "w-2 h-2 rounded-full transition-transform duration-300 group-hover:scale-110",
                     {
-                      'bg-green-400 animate-pulse': service.status === 'running' && service.health.status === 'healthy',
-                      'bg-red-400 animate-pulse': service.status === 'running' && service.health.status === 'unhealthy',
-                      'bg-blue-400 animate-pulse': service.status === 'running' && service.health.status === 'starting',
-                      'bg-gray-400': service.status === 'running' && service.health.status === 'unknown',
-                      'bg-red-400': service.status === 'stopped',
-                      'bg-yellow-400': service.status === 'error'
+                      'bg-green-400 animate-pulse': isServiceRunning,
+                      'bg-gray-400': isServiceNotCreated,
+                      'bg-yellow-400': !isServiceNotCreated && service.health.status === 'unhealthy',
+                      'bg-blue-400': !isServiceNotCreated && service.health.status === 'starting',
+                      'bg-gray-400 opacity-50': !isServiceNotCreated && service.health.status === 'unknown'
                     }
                   )} />
                   <span className="text-sm text-gray-500 dark:text-gray-400 transition-colors duration-300 group-hover:text-gray-600 dark:group-hover:text-gray-300">
-                    {service.status === 'running' 
-                      ? service.health.status === 'healthy' 
-                        ? 'Healthy'
-                        : service.health.status === 'unhealthy'
-                        ? 'Unhealthy'
-                        : service.health.status === 'starting'
-                        ? 'Starting'
-                        : 'Unknown'
-                      : service.status === 'stopped'
-                      ? 'Stopped'
-                      : 'Error'}
+                    {isServiceNotCreated ? 'Not Created' :
+                      service.health.status === 'healthy' ? 'Healthy' :
+                      service.health.status === 'unhealthy' ? 'Unhealthy' :
+                      service.health.status === 'starting' ? 'Starting' :
+                      'Unknown'}
                   </span>
-                  {service.status === 'running' && service.metrics?.uptime && (
-                    <>
-                      <span className="text-gray-300 dark:text-gray-600">•</span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400 transition-colors duration-300 group-hover:text-gray-600 dark:group-hover:text-gray-300">
-                        up {formatUptime(service.metrics.uptime)}
-                      </span>
-                    </>
-                  )}
                 </div>
               </div>
             </div>
@@ -189,6 +191,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                   showLogs && "bg-purple-100/10 text-purple-400 border-purple-200/20"
                 )}
                 onClick={() => setShowLogs(true)}
+                disabled={isServiceNotCreated}
               >
                 <Terminal className="w-4 h-4" />
                 <span className="sr-only">View logs</span>
@@ -198,7 +201,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                   variant="outline"
                   size="icon"
                   className="rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-green-100/10 hover:text-green-400 hover:border-green-200/20 z-20"
-                  disabled={!!loadingAction}
+                  disabled={!!loadingAction || isServiceNotCreated}
                   onClick={() => handleServiceAction('start')}
                 >
                   {loadingAction === 'start' ? (
@@ -213,7 +216,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                     variant="outline"
                     size="icon"
                     className="rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-red-100/10 hover:text-red-400 hover:border-red-200/20 z-20"
-                    disabled={!!loadingAction}
+                    disabled={!!loadingAction || isServiceNotCreated}
                     onClick={() => handleServiceAction('stop')}
                   >
                     {loadingAction === 'stop' ? (
@@ -226,7 +229,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                     variant="outline"
                     size="icon"
                     className="rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-yellow-100/10 hover:text-yellow-400 hover:border-yellow-200/20 z-20"
-                    disabled={!!loadingAction}
+                    disabled={!!loadingAction || isServiceNotCreated}
                     onClick={() => handleServiceAction('restart')}
                   >
                     {loadingAction === 'restart' ? (
@@ -241,7 +244,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
           </div>
 
           {/* Metrics */}
-          {service.status === 'running' && service.metrics && (
+          {isServiceRunning && service.metrics && (
             <div className="grid grid-cols-3 gap-3 pt-1">
               {/* CPU Usage */}
               <div>
@@ -300,6 +303,18 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                   </div>
                 </div>
                 <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">Network I/O</p>
+              </div>
+            </div>
+          )}
+
+          {/* Not Created Message */}
+          {isServiceNotCreated && (
+            <div className="pt-2">
+              <div className="relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-r from-gray-500/10 via-gray-500/5 to-gray-500/10"></div>
+                <p className="text-sm text-gray-400 bg-gray-100/10 dark:bg-gray-900/20 rounded-lg px-3 py-2 border border-gray-100/20 dark:border-gray-800/30 relative">
+                  Service will be created when you start NebulaGraph
+                </p>
               </div>
             </div>
           )}
