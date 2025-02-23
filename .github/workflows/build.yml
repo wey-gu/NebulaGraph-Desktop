@@ -16,7 +16,14 @@ env:
 
 jobs:
   prepare-images:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: arm64-latest
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -36,7 +43,10 @@ jobs:
           docker version
         
       - name: Pull and save Docker images
+        env:
+          ARCH: ${{ matrix.arch }}
         run: |
+          # Use native architecture to pull and save images
           npm run prepare-images
         
       - name: Verify images and manifest
@@ -56,7 +66,7 @@ jobs:
       - name: Upload Docker images
         uses: actions/upload-artifact@v4
         with:
-          name: nebula-docker-images
+          name: nebula-docker-images-${{ matrix.arch }}
           path: assets/NebulaGraph-Desktop/images/
           compression-level: 9
           retention-days: 1
@@ -66,19 +76,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
         include:
-          - os: ubuntu-latest
-            artifact_name: "*.AppImage"
-            platform: linux
-          - os: windows-latest
-            artifact_name: "*.exe"
-            platform: win
           - os: macos-latest
             artifact_name: "*.dmg"
-            platform: mac
+            platform: mac-arm64
+            arch: arm64
+            runner: macos-latest
+          - os: macos-latest
+            artifact_name: "*.dmg"
+            platform: mac-x64
+            arch: amd64
+            runner: macos-latest
+          - os: windows-latest
+            artifact_name: "*.exe"
+            platform: win-x64
+            arch: amd64
+            runner: windows-latest
     
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
     
     steps:
       - name: Checkout code
@@ -98,7 +113,7 @@ jobs:
       - name: Download Docker images
         uses: actions/download-artifact@v4
         with:
-          name: nebula-docker-images
+          name: nebula-docker-images-${{ matrix.arch }}
           path: assets/NebulaGraph-Desktop/images/
 
       - name: Verify downloaded images
@@ -115,7 +130,16 @@ jobs:
           NODE_ENV: production
 
       - name: Create distribution
-        run: npm run dist
+        run: |
+          # Set architecture-specific build options
+          if [ "${{ matrix.platform }}" = "mac-arm64" ]; then
+            export ELECTRON_ARCH=arm64
+          elif [ "${{ matrix.platform }}" = "mac-x64" ]; then
+            export ELECTRON_ARCH=x64
+          elif [ "${{ matrix.platform }}" = "win-x64" ]; then
+            export ELECTRON_ARCH=x64
+          fi
+          npm run dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
@@ -152,7 +176,6 @@ jobs:
           files: |
             artifacts/*.exe
             artifacts/*.dmg
-            artifacts/*.AppImage
           draft: ${{ github.event.inputs.draft || true }}
           prerelease: false
           generate_release_notes: true
@@ -169,5 +192,5 @@ jobs:
         uses: geekyeggo/delete-artifact@v2
         with:
           name: |
-            nebula-docker-images
+            nebula-docker-images-*
             nebula-desktop-* 

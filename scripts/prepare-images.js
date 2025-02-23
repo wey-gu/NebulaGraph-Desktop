@@ -5,26 +5,34 @@ const fs = require('fs/promises');
 
 const execAsync = promisify(exec);
 
+// Get architecture from environment variable, default to amd64
+const ARCH = process.env.ARCH || 'amd64';
+
 const IMAGES = {
   graphd: {
     name: 'vesoft/nebula-graphd',
-    tag: 'v3.8.0'
+    tag: 'v3.8.0',
+    platform: `linux/${ARCH}`
   },
   metad: {
     name: 'vesoft/nebula-metad',
-    tag: 'v3.8.0'
+    tag: 'v3.8.0',
+    platform: `linux/${ARCH}`
   },
   storaged: {
     name: 'vesoft/nebula-storaged',
-    tag: 'v3.8.0'
+    tag: 'v3.8.0',
+    platform: `linux/${ARCH}`
   },
   studio: {
     name: 'vesoft/nebula-graph-studio',
-    tag: 'v3.10.0'
+    tag: 'v3.10.0',
+    platform: `linux/${ARCH}`
   },
   console: {
     name: 'vesoft/nebula-console',
-    tag: 'nightly'
+    tag: 'nightly',
+    platform: `linux/${ARCH}`
   }
 };
 
@@ -55,18 +63,18 @@ async function main() {
     // Ensure images directory exists
     await fs.mkdir(IMAGES_DIR, { recursive: true });
 
-    console.log('🐳 Preparing NebulaGraph Docker images...\n');
+    console.log(`🐳 Preparing NebulaGraph Docker images for ${ARCH}...\n`);
 
     const results = {};
 
     for (const [key, config] of Object.entries(IMAGES)) {
       const fullImageName = `${config.name}:${config.tag}`;
-      console.log(`📥 Processing ${fullImageName}...`);
+      console.log(`📥 Processing ${fullImageName} for ${config.platform}...`);
 
       try {
-        // Pull image
+        // Pull image with platform specification
         console.log(`   Pulling image...`);
-        await execAsync(`docker pull ${fullImageName}`);
+        await execAsync(`docker pull --platform ${config.platform} ${fullImageName}`);
 
         // Get image size
         const size = await getImageSize(fullImageName);
@@ -99,7 +107,7 @@ async function main() {
       version: '1.0.0',
       timestamp: new Date().toISOString(),
       platform: process.platform,
-      arch: process.arch,
+      arch: ARCH,
       images: results
     };
 
@@ -115,7 +123,7 @@ async function main() {
     // Print summary
     console.log('\n📊 Summary:');
     for (const [key, config] of Object.entries(results)) {
-      console.log(`   ${key}: ${config.name}:${config.tag} (${config.size})`);
+      console.log(`   ${key}: ${config.name}:${config.tag} (${config.size}) [${config.platform}]`);
     }
   } catch (error) {
     console.error('❌ Failed to prepare images:', error);
