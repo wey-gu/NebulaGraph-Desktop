@@ -107,10 +107,22 @@ jobs:
 
       - name: Install dependencies
         run: |
+          # Install root project dependencies
           npm ci
-          cd renderer && npm ci
+          npm install -g typescript cross-env
+
+          # Install renderer dependencies
+          cd renderer
+          npm ci
           cd ..
-          npm install -g cross-env
+
+          # Verify installations
+          echo "TypeScript version:"
+          tsc --version
+          echo "Node version:"
+          node --version
+          echo "NPM version:"
+          npm --version
 
       - name: Download Docker images
         uses: actions/download-artifact@v4
@@ -127,7 +139,12 @@ jobs:
           fi
 
       - name: Build Electron app
-        run: npm run build
+        run: |
+          # Build Electron part
+          npm run build:electron
+          
+          # Build Next.js part
+          cd renderer && npm run build
         env:
           NODE_ENV: production
 
