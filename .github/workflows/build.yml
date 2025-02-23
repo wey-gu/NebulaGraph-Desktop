@@ -215,14 +215,26 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  cleanup:
-    needs: release
-    if: always()
+  cleanup-on-failure:
+    needs: [prepare-images, build]
+    if: failure()
     runs-on: ubuntu-latest
     steps:
-      - name: Delete artifacts
+      - name: Delete all artifacts
         uses: geekyeggo/delete-artifact@v2
         with:
           name: |
             nebula-docker-images-*
-            nebula-desktop-* 
+            nebula-desktop-*
+          failOnError: false
+
+  cleanup-success:
+    needs: release
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete Docker image artifacts
+        uses: geekyeggo/delete-artifact@v2
+        with:
+          name: nebula-docker-images-*
+          failOnError: false 
