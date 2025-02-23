@@ -22,7 +22,7 @@ jobs:
           - arch: amd64
             runner: ubuntu-latest
           - arch: arm64
-            runner: arm64-latest
+            runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout code
@@ -86,7 +86,7 @@ jobs:
             artifact_name: "*.dmg"
             platform: mac-x64
             arch: amd64
-            runner: macos-latest
+            runner: macos-13
           - os: windows-latest
             artifact_name: "*.exe"
             platform: win-x64
