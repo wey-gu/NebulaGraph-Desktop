@@ -148,16 +148,28 @@ jobs:
         env:
           NODE_ENV: production
 
-      - name: Create distribution
+      - name: Create distribution (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
         run: |
-          # Set architecture-specific build options
-          if ($env:matrix_platform -eq "mac-arm64") {
-            $env:ELECTRON_ARCH = "arm64"
-          } elseif ($env:matrix_platform -eq "mac-x64") {
-            $env:ELECTRON_ARCH = "x64"
-          } elseif ($env:matrix_platform -eq "win-x64") {
+          if ($env:matrix_platform -eq "win-x64") {
             $env:ELECTRON_ARCH = "x64"
           }
+          npm run dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          matrix_platform: ${{ matrix.platform }}
+
+      - name: Create distribution (macOS)
+        if: startsWith(matrix.os, 'macos')
+        shell: bash
+        run: |
+          if [ "$matrix_platform" = "mac-arm64" ]; then
+            export ELECTRON_ARCH="arm64"
+          elif [ "$matrix_platform" = "mac-x64" ]; then
+            export ELECTRON_ARCH="x64"
+          fi
           npm run dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
