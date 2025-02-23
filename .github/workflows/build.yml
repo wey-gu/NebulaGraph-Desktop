@@ -109,6 +109,8 @@ jobs:
         run: |
           npm ci
           cd renderer && npm ci
+          cd ..
+          npm install -g cross-env
 
       - name: Download Docker images
         uses: actions/download-artifact@v4
