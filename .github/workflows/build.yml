@@ -252,8 +252,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/*.exe
-            artifacts/*.dmg
+            artifacts/release/*.exe
+            artifacts/release/*.dmg
           draft: ${{ github.event.inputs.draft || true }}
           prerelease: false
           generate_release_notes: true
