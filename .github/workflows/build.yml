@@ -82,11 +82,12 @@ jobs:
             platform: mac-arm64
             arch: arm64
             runner: macos-latest
-          - os: macos-latest
-            artifact_name: "*.dmg"
-            platform: mac-x64
-            arch: amd64
-            runner: macos-13
+          # TODO: Enable macOS x64 build, now does not work
+          # - os: macos-latest
+          #   artifact_name: "*.dmg"
+          #   platform: mac-x64
+          #   arch: amd64
+          #   runner: macos-13
           - os: windows-latest
             artifact_name: "*.exe"
             platform: win-x64
@@ -188,12 +189,44 @@ jobs:
         if: startsWith(matrix.os, 'macos')
         shell: bash
         run: |
+          # Ensure the app directory exists and has content
+          APP_DIR="release/mac/NebulaGraph Desktop.app"
+          if [ ! -d "$APP_DIR" ]; then
+            echo "❌ App directory not found: $APP_DIR"
+            exit 1
+          fi
+          echo "📂 App directory contents:"
+          ls -la "$APP_DIR"
+
+          # Set architecture
           if [ "$matrix_platform" = "mac-arm64" ]; then
             export ELECTRON_ARCH="arm64"
           elif [ "$matrix_platform" = "mac-x64" ]; then
             export ELECTRON_ARCH="x64"
           fi
-          npm run dist
+
+          # Clean any existing DMG files
+          rm -rf release/*.dmg
+
+          # Create build directory with appropriate permissions
+          sudo mkdir -p /tmp/build
+          sudo chmod 777 /tmp/build
+
+          # Set environment variables for electron-builder
+          export DEBUG=electron-builder
+          export ELECTRON_BUILDER_TMP=/tmp/build
+
+          # Run the build with verbose logging
+          npm run dist --verbose
+
+          # Verify the DMG was created
+          if [ ! -f "release/"*.dmg ]; then
+            echo "❌ DMG file not created"
+            echo "📂 Release directory contents:"
+            ls -la release/
+            exit 1
+          fi
+          echo "✅ DMG creation successful"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false

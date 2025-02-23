@@ -16,6 +16,9 @@ declare global {
   interface Window {
     electronAPI: {
       docker: DockerAPI;
+      browser: {
+        openExternal: (url: string) => Promise<boolean>;
+      };
       logs: {
         subscribe: (callback: (log: MainProcessLog) => void) => () => void;
       };
@@ -198,10 +201,18 @@ export default function Home() {
       return
     }
 
-    window.open('http://localhost:7001', '_blank')
-    toast.success('Opening NebulaGraph Studio', {
-      description: 'The web interface will open in a new tab.'
-    })
+    window.electronAPI.browser.openExternal('http://localhost:7001')
+      .then(() => {
+        toast.success('Opening NebulaGraph Studio', {
+          description: 'Please note the IP address for graphd is `graphd`'
+        })
+      })
+      .catch(error => {
+        console.error('Failed to open Studio:', error)
+        toast.error('Failed to open Studio', {
+          description: 'Please try opening http://localhost:7001 manually in your browser.'
+        })
+      })
   }
 
   return (

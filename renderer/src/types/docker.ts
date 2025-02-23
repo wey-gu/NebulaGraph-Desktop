@@ -62,6 +62,9 @@ declare global {
   interface Window {
     electronAPI: {
       docker: DockerAPI;
+      browser: {
+        openExternal: (url: string) => Promise<boolean>;
+      };
       logs: {
         subscribe: (callback: (log: MainProcessLog) => void) => () => void;
       };

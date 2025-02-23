@@ -157,6 +157,9 @@ try {
   console.log('🔌 Exposing Electron API...');
   contextBridge.exposeInMainWorld('electronAPI', {
     docker: docker,
+    browser: {
+      openExternal: (url: string) => ipcRenderer.invoke('browser:openExternal', url)
+    },
     logs: {
       subscribe: (callback: (log: any) => void) => {
         const subscription = (_: any, log: any) => callback(log);

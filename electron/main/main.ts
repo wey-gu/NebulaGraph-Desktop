@@ -195,6 +195,12 @@ ipcMain.handle('docker:status', async () => {
   return dockerService.checkDockerStatus();
 });
 
+ipcMain.handle('browser:openExternal', async (_, url: string) => {
+  const { shell } = require('electron');
+  await shell.openExternal(url);
+  return true;
+});
+
 ipcMain.handle('docker:systemStatus', async () => {
   return dockerService.getSystemStatus();
 });
