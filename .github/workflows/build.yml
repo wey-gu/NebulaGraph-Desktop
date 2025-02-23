@@ -133,10 +133,33 @@ jobs:
       - name: Verify downloaded images
         shell: bash
         run: |
+          echo "📂 Checking images directory structure..."
+          ls -la assets/NebulaGraph-Desktop/images/
+          
           if [ ! -f "assets/NebulaGraph-Desktop/images/manifest.json" ]; then
             echo "❌ Manifest file not found after download"
             exit 1
           fi
+          
+          # Verify each required image file
+          for img in graphd metad storaged studio console; do
+            if [ ! -f "assets/NebulaGraph-Desktop/images/${img}.tar" ]; then
+              echo "❌ Image file ${img}.tar not found"
+              exit 1
+            fi
+            # Verify file is not empty
+            if [ ! -s "assets/NebulaGraph-Desktop/images/${img}.tar" ]; then
+              echo "❌ Image file ${img}.tar is empty"
+              exit 1
+            fi
+            echo "✅ Verified ${img}.tar"
+          done
+          
+          # Ensure files are readable
+          chmod 644 assets/NebulaGraph-Desktop/images/*.tar
+          chmod 644 assets/NebulaGraph-Desktop/images/manifest.json
+          
+          echo "✅ All image files verified and properly set up"
 
       - name: Build Electron app
         run: |
