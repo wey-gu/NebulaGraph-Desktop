@@ -277,16 +277,16 @@ export class DockerChecker {
         const fullImageName = `${config.name}:${config.tag}`;
         try {
           const { stdout } = await exec(`docker image inspect ${fullImageName}`);
-          console.log(`✓ Image ${fullImageName} exists`);
+          logger.info(`✓ Image ${fullImageName} exists`);
         } catch (error) {
-          console.log(`✕ Image ${fullImageName} not found`);
+          logger.error(`✕ Image ${fullImageName} not found`);
           return false;
         }
       }
       
       return true;
     } catch (error) {
-      console.error('Failed to check images:', error);
+      logger.error('Failed to check images:', error);
       return false;
     }
   }
@@ -298,34 +298,40 @@ export class DockerChecker {
       // Check Docker system status first
       const dockerStatus = await this.checkDockerSystem();
       if (!dockerStatus.isInstalled || !dockerStatus.isRunning) {
-        console.error('Docker is not ready:', dockerStatus.error);
+        logger.info('Docker is not ready:', dockerStatus.error);
         return false;
       }
 
+      logger.info('📦 Starting to load Docker images...');
       const manifestContent = await fs.readFile(this.manifestPath, 'utf-8');
       const manifest = JSON.parse(manifestContent);
       const images = Object.entries<ImageConfig>(manifest.images);
       const total = images.length;
+      logger.info(`Found ${total} images to load`);
 
       for (const [index, [key, config]] of images.entries()) {
         const imagePath = path.join(this.imagesPath, `${key}.tar`);
         const fullImageName = `${config.name}:${config.tag}`;
 
         progressCallback?.(index + 1, total, fullImageName);
+        logger.info(`[${index + 1}/${total}] Loading image ${fullImageName}...`);
+        const startTime = Date.now();
 
         try {
-          console.log(`Loading image ${fullImageName}...`);
+          logger.info(`Reading image file: ${key}.tar`);
           await exec(`docker load -i "${imagePath}"`);
-          console.log(`✓ Loaded ${fullImageName}`);
+          const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+          logger.info(`✅ Loaded ${fullImageName} (took ${duration}s)`);
         } catch (error) {
-          console.error(`Failed to load ${fullImageName}:`, error);
+          logger.error(`Failed to load ${fullImageName}:`, error);
           return false;
         }
       }
 
+      logger.info('✅ All images loaded successfully');
       return true;
     } catch (error) {
-      console.error('Failed to load images:', error);
+      logger.error('Failed to load images:', error);
       return false;
     }
   }
@@ -336,13 +342,13 @@ export class DockerChecker {
     // Check Docker system status first
     const dockerStatus = await this.checkDockerSystem();
     if (!dockerStatus.isInstalled || !dockerStatus.isRunning) {
-      console.error('Docker is not ready:', dockerStatus.error);
+      logger.error('Docker is not ready:', dockerStatus.error);
       return false;
     }
 
     const hasImages = await this.checkRequiredImages();
     if (!hasImages) {
-      console.log('Some images are missing, loading from resources...');
+      logger.info('Some images are missing, loading from resources...');
       return this.loadImages(progressCallback);
     }
     return true;
@@ -354,29 +360,57 @@ export class DockerChecker {
 
   private async getServiceHealth(serviceName: string): Promise<'healthy' | 'unhealthy' | 'starting' | 'unknown'> {
     try {
-      // Special case for console service - it doesn't need health checks
-      // if (serviceName === 'console') {
-      //   const { stdout: containerInfo } = await execAsync(
-      //     `docker inspect ${this.getContainerName(serviceName)}`
-      //   );
-      //   const container = JSON.parse(containerInfo)[0];
-      //   return container?.State?.Running ? 'healthy' : 'unknown';
-      // }
+      const containerName = this.getContainerName(serviceName);
+      logger.info(`🏥 Checking health for ${serviceName} (${containerName})`);
 
-      // First check Docker health status
-      const { stdout: healthStatus } = await exec(
-        `docker ps --filter "name=${this.getContainerName(serviceName)}" --format "{{.Status}}"`
-      );
+      // First try to get container state
+      const stateCmd = process.platform === 'win32'
+        ? `docker inspect --format "{{if .State}}{{.State.Status}}{{end}}" ${containerName}`
+        : `docker inspect --format '{{if .State}}{{.State.Status}}{{end}}' ${containerName}`;
 
-      const status = healthStatus.trim();
-      if (status.includes('(healthy)')) return 'healthy';
-      if (status.includes('(unhealthy)')) return 'unhealthy';
-      if (status.includes('starting')) return 'starting';
-      if (status.includes('Up')) return 'starting'; // Consider "Up" state as starting
+      try {
+        const state = await this.execCommand(stateCmd);
+        const containerState = state.trim().toLowerCase();
+        logger.info(`Container state for ${serviceName}:`, containerState);
+
+        if (containerState === 'running') {
+          // If container is running, check health status
+          const healthCmd = process.platform === 'win32'
+            ? `docker inspect --format "{{if .State.Health}}{{.State.Health.Status}}{{end}}" ${containerName}`
+            : `docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' ${containerName}`;
+
+          const healthStatus = await this.execCommand(healthCmd);
+          const status = healthStatus.trim().toLowerCase();
+          logger.info(`Health check result for ${serviceName}:`, status);
+
+          if (status === 'healthy') return 'healthy';
+          if (status === 'unhealthy') return 'unhealthy';
+          if (status === 'starting') return 'starting';
+
+          // For containers without health checks or still initializing
+          return 'starting';
+        }
+      } catch (error) {
+        logger.warn(`Container inspection failed for ${serviceName}:`, error);
+        // Try fallback to ps command
+        try {
+          const psCmd = process.platform === 'win32'
+            ? `docker ps --filter "name=${containerName}" --format "{{.Status}}"`
+            : `docker ps --filter name=${containerName} --format "{{.Status}}"`;
+
+          logger.info('Trying fallback ps command:', psCmd);
+          const psStatus = await this.execCommand(psCmd);
+          if (psStatus.includes('Up')) {
+            return 'starting';
+          }
+        } catch (psError) {
+          logger.error('Fallback ps command also failed:', psError);
+        }
+      }
 
       return 'unknown';
     } catch (error) {
-      console.error('Failed to check service health:', error);
+      logger.error(`❌ Health check error for ${serviceName}:`, error);
       return 'unknown';
     }
   }

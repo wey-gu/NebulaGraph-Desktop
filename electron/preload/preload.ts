@@ -53,6 +53,8 @@ interface DockerAPI {
   stopService: (serviceName: string) => Promise<{ success: boolean; error?: string }>;
   restartService: (serviceName: string) => Promise<{ success: boolean; error?: string }>;
   getLogs: (serviceName: string) => Promise<Array<LogEntry>>;
+  getImageLoadingProgress: () => Promise<number | null>;
+  ensureImagesLoaded: () => Promise<boolean>;
 }
 
 // Create the API object with error handling and logging
@@ -123,6 +125,22 @@ const docker: DockerAPI = {
     } catch (error) {
       console.error('Restart service error:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  },
+  getImageLoadingProgress: async () => {
+    try {
+      return await ipcRenderer.invoke('docker:getImageLoadingProgress');
+    } catch (error) {
+      console.error('Get image loading progress error:', error);
+      return null;
+    }
+  },
+  ensureImagesLoaded: async () => {
+    try {
+      return await ipcRenderer.invoke('docker:ensureImagesLoaded');
+    } catch (error) {
+      console.error('Ensure images loaded error:', error);
+      return false;
     }
   },
   getLogs: async (serviceName: string) => {

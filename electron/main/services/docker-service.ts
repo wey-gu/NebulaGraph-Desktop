@@ -96,6 +96,7 @@ export class DockerService {
   private static CACHE_DURATION = 1000 * 60 * 60; // 1 hour
   private static servicesStarting: boolean = false;
   private static lastServiceStatus: Record<string, ServiceStatus> = {};
+  private static imageLoadingProgress: { current: number; total: number; status: string } | null = null;
 
   private static composeFileCache: {
     path: string;
@@ -110,6 +111,46 @@ export class DockerService {
     this.initializePaths(true).catch(error => {
       logger.error('Failed to initialize paths:', error);
     });
+  }
+
+  public async ensureImagesLoaded(): Promise<boolean> {
+    try {
+      // Check if Docker is running first
+      const isRunning = await this.checkDockerStatus();
+      if (!isRunning) {
+        DockerService.imageLoadingProgress = null;
+        return false;
+      }
+
+      // Check if images are already loaded
+      const hasImages = await this.dockerChecker.checkRequiredImages();
+      if (hasImages) {
+        DockerService.imageLoadingProgress = null;
+        return true;
+      }
+
+      // Start loading images with progress
+      DockerService.imageLoadingProgress = { current: 0, total: 4, status: 'preparing' };
+      await this.dockerChecker.loadImages((current, total, imageName) => {
+        DockerService.imageLoadingProgress = {
+          current,
+          total,
+          status: `Loading ${imageName}...`
+        };
+        logger.info(`Loading image ${current}/${total}: ${imageName}`);
+      });
+
+      DockerService.imageLoadingProgress = null;
+      return true;
+    } catch (error) {
+      logger.error('Failed to load images:', error);
+      DockerService.imageLoadingProgress = null;
+      return false;
+    }
+  }
+
+  public getImageLoadingProgress() {
+    return DockerService.imageLoadingProgress;
   }
 
   // Add cache management methods
@@ -262,9 +303,9 @@ export class DockerService {
   }
 
   async getSystemStatus(): Promise<DockerSystemStatus> {
-    console.log('🔍 Getting Docker system status...');
+    logger.info('🔍 Getting Docker system status...');
     const status = await this.dockerChecker.checkDocker();
-    console.log('📋 Docker system status:', status);
+    logger.info('📋 Docker system status:', status);
     return status;
   }
 
@@ -474,37 +515,50 @@ export class DockerService {
     try {
       // Get detailed container status
       const containerName = this.getContainerName(serviceName);
-      const healthCommand = `docker inspect --format '{{.State.Health.Status}}' ${containerName} 2>/dev/null || echo "none"`;
-      logger.info(`🏥 Checking health for ${serviceName} with command:`, healthCommand);
+      logger.info(`📋 Checking status for ${serviceName} (${containerName})`);
       
-      const healthStatus = await this.dockerChecker.execCommand(healthCommand);
-      const status = healthStatus.trim().toLowerCase();
-      logger.info(`🏥 Health status for ${serviceName}:`, status);
+      // Use CMD-compatible syntax for Windows
+      const inspectCommand = process.platform === 'win32'
+        ? `docker inspect ${containerName} 2>nul || echo not-found`
+        : `docker inspect ${containerName} 2>/dev/null || echo "not-found"`;
+      
+      const inspectOutput = await this.dockerChecker.execCommand(inspectCommand);
+      logger.info(`🔍 Inspect output for ${serviceName}:`, inspectOutput.substring(0, 100) + '...');
 
-      // Map Docker health status to our status
-      switch (status) {
-        case 'healthy':
-          return 'healthy';
-        case 'unhealthy':
-          return 'unhealthy';
-        case 'starting':
-        case 'none':
-          // If no health status, check if container is running
-          const stateCommand = `docker inspect --format '{{.State.Status}}' ${containerName} 2>/dev/null || echo "none"`;
-          const state = await this.dockerChecker.execCommand(stateCommand);
-          const containerState = state.trim().toLowerCase();
-          
-          if (containerState === 'running') {
-            // For containers without health checks (like storage-activator)
-            if (serviceName === 'storage-activator') {
-              return 'healthy';
-            }
-            // Container is running but still initializing
+      if (inspectOutput === "not-found" || inspectOutput.includes("Error: No such object")) {
+        logger.info(`❌ Container not found for ${serviceName}`);
+        return 'unknown';
+      }
+
+      try {
+        const inspectData = JSON.parse(inspectOutput)[0];
+        const isRunning = inspectData?.State?.Running === true;
+        
+        if (!isRunning) {
+          return 'unknown';
+        }
+
+        // Check health status if container is running
+        const healthCommand = process.platform === 'win32'
+          ? `docker inspect --format "{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}" ${containerName} 2>nul || echo none`
+          : `docker inspect --format '{{.State.Health.Status}}' ${containerName} 2>/dev/null || echo "none"`;
+        
+        const healthStatus = await this.dockerChecker.execCommand(healthCommand);
+        const status = healthStatus.trim().toLowerCase();
+        
+        switch (status) {
+          case 'healthy':
+            return 'healthy';
+          case 'unhealthy':
+            return 'unhealthy';
+          case 'starting':
             return 'starting';
-          }
-          return 'unknown';
-        default:
-          return 'unknown';
+          default:
+            return serviceName === 'storage-activator' ? 'healthy' : 'starting';
+        }
+      } catch (error) {
+        logger.error(`❌ Health check error for ${serviceName}:`, error);
+        return 'unknown';
       }
     } catch (error) {
       logger.error(`❌ Health check error for ${serviceName}:`, error);
@@ -544,11 +598,15 @@ export class DockerService {
           const containerName = this.getContainerName(serviceName);
           logger.info(`📋 Checking status for ${serviceName} (${containerName})`);
           
-          const inspectCommand = `docker inspect ${containerName} || echo "not-found"`;
+          // Use CMD-compatible syntax for Windows
+          const inspectCommand = process.platform === 'win32'
+            ? `docker inspect ${containerName} 2>nul || echo not-found`
+            : `docker inspect ${containerName} 2>/dev/null || echo "not-found"`;
+          
           const inspectOutput = await this.dockerChecker.execCommand(inspectCommand);
           logger.info(`🔍 Inspect output for ${serviceName}:`, inspectOutput.substring(0, 100) + '...');
-          
-          if (inspectOutput === "not-found") {
+
+          if (inspectOutput === "not-found" || inspectOutput.includes("Error: No such object")) {
             logger.info(`❌ Container not found for ${serviceName}`);
             services[serviceName] = {
               name: config.name,
@@ -574,7 +632,10 @@ export class DockerService {
 
           if (isRunning) {
             // Get metrics in parallel
-            const statsCommand = `docker stats ${containerName} --no-stream --format "{{.CPUPerc}};{{.MemUsage}};{{.NetIO}}"`;
+            const statsCommand = process.platform === 'win32'
+              ? `docker stats ${containerName} --no-stream --format "{{.CPUPerc}};{{.MemUsage}};{{.NetIO}}" 2>nul || echo "0%;0MB;0B"`
+              : `docker stats ${containerName} --no-stream --format "{{.CPUPerc}};{{.MemUsage}};{{.NetIO}}" 2>/dev/null || echo "0%;0MB;0B"`;
+            
             const statsOutput = await this.dockerChecker.execCommand(statsCommand).catch(() => '0%;0MB;0B');
             const [cpu, mem, net] = statsOutput.split(';');
             logger.info(`📊 Metrics for ${serviceName}:`, { cpu, mem, net });

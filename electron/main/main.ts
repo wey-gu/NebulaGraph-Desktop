@@ -180,11 +180,6 @@ function createWindow() {
     });
   }
 
-  // Enable DevTools in production for debugging
-  if (!isDev) {
-    mainWindow.webContents.openDevTools();
-  }
-
   mainWindow?.on('closed', () => {
     mainWindow = null;
   });
@@ -240,6 +235,16 @@ ipcMain.handle('docker:stopService', async (_, serviceName: string) => {
 
 ipcMain.handle('docker:restartService', async (_, serviceName: string) => {
   return dockerService.restartService(serviceName);
+});
+
+// Add handler for image loading progress
+ipcMain.handle('docker:getImageLoadingProgress', () => {
+  return dockerService.getImageLoadingProgress();
+});
+
+// Add handler for ensuring images are loaded
+ipcMain.handle('docker:ensureImagesLoaded', async () => {
+  return dockerService.ensureImagesLoaded();
 });
 
 // Ensure app is ready before creating window

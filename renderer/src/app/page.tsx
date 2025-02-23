@@ -34,10 +34,14 @@ export default function Home() {
   const [showDashboard, setShowDashboard] = useState<boolean>(false)
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true)
   const [showDockerSetup, setShowDockerSetup] = useState<boolean>(false)
+  const [imageLoadingProgress, setImageLoadingProgress] = useState<{ current: number; total: number; status: string } | null>(null)
 
   // Add service status polling interval ref
   const statusPollingRef = useRef<NodeJS.Timeout | null>(null)
   const isFirstLoad = useRef<boolean>(true)
+
+  // Add image loading progress polling interval ref
+  const imageLoadingPollingRef = useRef<NodeJS.Timeout | null>(null)
 
   // Optimize service status polling
   const pollServicesStatus = useCallback(async () => {
@@ -80,6 +84,21 @@ export default function Home() {
       setStatus('Error checking service status')
     }
   }, [])
+
+  // Poll image loading progress
+  const pollImageLoadingProgress = useCallback(async () => {
+    try {
+      const progress = await window.electronAPI.docker.getImageLoadingProgress();
+      setImageLoadingProgress(progress);
+      
+      // If still loading, continue polling
+      if (progress) {
+        imageLoadingPollingRef.current = setTimeout(pollImageLoadingProgress, 1000);
+      }
+    } catch (error) {
+      console.error('Failed to poll image loading progress:', error);
+    }
+  }, []);
 
   // Optimize initial load
   const initializeApp = useCallback(async () => {
@@ -126,8 +145,19 @@ export default function Home() {
     if (isFirstLoad.current) {
       isFirstLoad.current = false
       initializeApp()
+      // Start polling image loading progress
+      pollImageLoadingProgress()
     }
-  }, [initializeApp])
+  }, [initializeApp, pollImageLoadingProgress])
+
+  // Cleanup polling
+  useEffect(() => {
+    return () => {
+      if (imageLoadingPollingRef.current) {
+        clearTimeout(imageLoadingPollingRef.current)
+      }
+    }
+  }, [])
 
   const startNebulaGraph = async () => {
     setIsLoading(true)
@@ -241,13 +271,46 @@ export default function Home() {
             lightLineColor: "rgba(74, 74, 74, 0.1)",
             darkLineColor: "rgba(42, 42, 42, 0.3)",
           }}
-          onClick={() => setShowDashboard(true)}
+          onClick={async () => {
+            // First show the dashboard
+            setShowDashboard(true);
+            // Then check and load images if needed
+            const result = await window.electronAPI.docker.ensureImagesLoaded();
+            if (!result) {
+              toast.error('Failed to load Docker images', {
+                description: 'Please make sure Docker is running and try again.'
+              });
+            }
+          }}
           className="animate-fade-in"
         />
       ) : isInitialLoading ? (
         <ServicesSkeleton />
       ) : (
         <div className="container mx-auto px-4 py-8 max-w-7xl animate-slide-up">
+          {/* Loading Overlay */}
+          {imageLoadingProgress && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
+              <div className="bg-white dark:bg-[#1C2333] p-8 rounded-xl shadow-xl max-w-md w-full mx-4">
+                <div className="space-y-4">
+                  <h3 className="text-xl font-semibold text-center">Preparing NebulaGraph</h3>
+                  <p className="text-gray-500 dark:text-gray-400 text-center text-sm">
+                    {imageLoadingProgress.status}
+                  </p>
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+                    <div
+                      className="bg-purple-600 h-2.5 rounded-full transition-all duration-300"
+                      style={{ width: `${(imageLoadingProgress.current / imageLoadingProgress.total) * 100}%` }}
+                    />
+                  </div>
+                  <p className="text-center text-sm text-gray-500 dark:text-gray-400">
+                    {imageLoadingProgress.current} of {imageLoadingProgress.total} images
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <header className="mb-12 flex items-center justify-between animate-slide-down">
             <div className="flex items-center gap-6">
               <button 

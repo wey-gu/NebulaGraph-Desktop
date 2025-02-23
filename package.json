@@ -1,7 +1,7 @@
 {
   "name": "nebulagraph-desktop",
-  "version": "0.1.0",
-  "description": "Cross-platform desktop application for running NebulaGraph with Docker",
+  "version": "0.2.0",
+  "description": "Desktop version of NebulaGraph",
   "main": "dist/main/main.js",
   "scripts": {
     "dev": "concurrently \"cd renderer && npm run dev\" \"cross-env NODE_ENV=development npm run dev:electron\"",

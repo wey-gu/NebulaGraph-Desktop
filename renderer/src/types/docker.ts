@@ -50,6 +50,8 @@ export interface DockerAPI {
   stopService: (serviceName: string) => Promise<{ success: boolean; error?: string }>;
   restartService: (serviceName: string) => Promise<{ success: boolean; error?: string }>;
   getLogs: (serviceName: string) => Promise<Array<LogEntry>>;
+  getImageLoadingProgress: () => Promise<{ current: number; total: number; status: string } | null>;
+  ensureImagesLoaded: () => Promise<boolean>;
 }
 
 export interface MainProcessLog {

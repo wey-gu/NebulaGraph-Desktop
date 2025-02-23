@@ -11,16 +11,17 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="dark" suppressHydrationWarning>
       <body className={`${GeistSans.variable} font-sans`}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
-          enableSystem
+          defaultTheme="dark"
+          enableSystem={false}
+          forcedTheme="dark"
           disableTransitionOnChange
         >
           {children}
-          <Toaster richColors closeButton position="top-right" />
+          <Toaster richColors closeButton position="top-right" theme="dark" />
         </ThemeProvider>
       </body>
     </html>
