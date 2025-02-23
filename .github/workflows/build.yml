@@ -189,15 +189,6 @@ jobs:
         if: startsWith(matrix.os, 'macos')
         shell: bash
         run: |
-          # Ensure the app directory exists and has content
-          APP_DIR="release/mac/NebulaGraph Desktop.app"
-          if [ ! -d "$APP_DIR" ]; then
-            echo "❌ App directory not found: $APP_DIR"
-            exit 1
-          fi
-          echo "📂 App directory contents:"
-          ls -la "$APP_DIR"
-
           # Set architecture
           if [ "$matrix_platform" = "mac-arm64" ]; then
             export ELECTRON_ARCH="arm64"
@@ -219,7 +210,6 @@ jobs:
           # Run the build with verbose logging
           npm run dist --verbose
 
-          # Verify the DMG was created
           if [ ! -f "release/"*.dmg ]; then
             echo "❌ DMG file not created"
             echo "📂 Release directory contents:"
