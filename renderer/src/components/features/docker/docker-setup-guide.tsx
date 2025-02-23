@@ -39,6 +39,7 @@ export function DockerSetupGuide({ onComplete, className }: DockerSetupGuideProp
               title="Dependency issue detected"
               autoPlayInterval={5000}
               className={className}
+              // imageHeight="h-[300px]"
             />
             <div className="flex items-center justify-end gap-4 p-6 pt-0">
               <button

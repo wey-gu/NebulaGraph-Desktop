@@ -1,10 +1,8 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { Button } from '@/components/ui/button'
-import { DockerControls } from '@/components/features/docker/docker-controls'
 import { ServicesGrid } from '@/components/features/services/services-grid'
-import { DockerAPI, ServiceStatus, LogEntry } from '@/types/docker'
+import { DockerAPI, ServiceStatus } from '@/types/docker'
 import { HeroSection } from '@/components/blocks/hero-section-dark'
 import { Spinner } from '@/components/ui/spinner'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
@@ -43,13 +41,13 @@ export default function Home() {
       
       // Check if any service is still starting
       const hasStartingServices = Object.values(services).some(
-        s => s.status === 'running' && s.health === 'starting'
+        s => s.status === 'running' && s.health.status === 'starting'
       )
 
       // Check service states and set appropriate status
-      const runningCount = Object.values(services).filter(s => s.status === 'running').length
+      const runningCount = Object.values(services).filter(s => s.status === 'running' && s.health.status === 'healthy').length
       const totalServices = Object.keys(services).length
-      const errorCount = Object.values(services).filter(s => s.status === 'error').length
+      const errorCount = Object.values(services).filter(s => s.status === 'error' || s.health.status === 'unhealthy').length
       
       if (hasStartingServices) {
         setStatus('Services are starting...')

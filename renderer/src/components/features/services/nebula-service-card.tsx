@@ -1,8 +1,8 @@
 import { ServiceStatus } from '@/types/docker';
 import { cn } from '@/lib/utils';
 import { 
-  Activity, AlertCircle, CheckCircle2, XCircle, Globe, 
-  Server, Database, ArrowUpRight, Terminal, Cpu, 
+  Activity, Globe, 
+  Server, Database, Terminal, Cpu, 
   RotateCw, Square, Play, Loader2 
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -47,6 +47,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
       }
     } catch (error) {
       toast.error(`Failed to ${action} service`);
+      console.error('Failed to start service:', error);
     }
     setLoadingAction(null);
   };
@@ -143,24 +144,35 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                   <div className={cn(
                     "w-2 h-2 rounded-full transition-transform duration-300 group-hover:scale-110",
                     {
-                      'bg-green-400 animate-pulse': service.status === 'running' && service.health === 'healthy',
-                      'bg-yellow-400 animate-pulse': service.status === 'running' && service.health === 'unhealthy',
-                      'bg-blue-400 animate-pulse': service.status === 'running' && service.health === 'starting',
+                      'bg-green-400 animate-pulse': service.status === 'running' && service.health.status === 'healthy',
+                      'bg-red-400 animate-pulse': service.status === 'running' && service.health.status === 'unhealthy',
+                      'bg-blue-400 animate-pulse': service.status === 'running' && service.health.status === 'starting',
+                      'bg-gray-400': service.status === 'running' && service.health.status === 'unknown',
                       'bg-red-400': service.status === 'stopped',
                       'bg-yellow-400': service.status === 'error'
                     }
                   )} />
                   <span className="text-sm text-gray-500 dark:text-gray-400 transition-colors duration-300 group-hover:text-gray-600 dark:group-hover:text-gray-300">
                     {service.status === 'running' 
-                      ? service.health === 'healthy' 
+                      ? service.health.status === 'healthy' 
                         ? 'Healthy'
-                        : service.health === 'unhealthy'
+                        : service.health.status === 'unhealthy'
                         ? 'Unhealthy'
-                        : 'Starting'
+                        : service.health.status === 'starting'
+                        ? 'Starting'
+                        : 'Unknown'
                       : service.status === 'stopped'
                       ? 'Stopped'
                       : 'Error'}
                   </span>
+                  {service.status === 'running' && service.metrics?.uptime && (
+                    <>
+                      <span className="text-gray-300 dark:text-gray-600">•</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400 transition-colors duration-300 group-hover:text-gray-600 dark:group-hover:text-gray-300">
+                        up {formatUptime(service.metrics.uptime)}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -231,6 +243,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
           {/* Metrics */}
           {service.status === 'running' && service.metrics && (
             <div className="grid grid-cols-3 gap-3 pt-1">
+              {/* CPU Usage */}
               <div>
                 <div className="flex items-center gap-2">
                   <Cpu className="w-3 h-3 text-gray-500 dark:text-gray-400" />
@@ -249,20 +262,44 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                     {service.metrics.cpu}
                   </span>
                 </div>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">CPU Usage</p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <Database className="w-3 h-3 text-gray-500 dark:text-gray-400" />
-                <span className="text-xs font-medium text-gray-600 dark:text-gray-300 tabular-nums">
-                  {service.metrics.memory}
-                </span>
+              {/* Memory Usage */}
+              <div>
+                <div className="flex items-center gap-2">
+                  <Database className="w-3 h-3 text-gray-500 dark:text-gray-400" />
+                  <div className="flex-1 h-1 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                    <div 
+                      className={cn(
+                        "h-full rounded-full transition-all duration-500",
+                        parseFloat(service.metrics.memory) > 1024 ? "bg-red-500" :
+                        parseFloat(service.metrics.memory) > 512 ? "bg-yellow-500" :
+                        "bg-blue-500"
+                      )}
+                      style={{ width: `${Math.min(100, (parseFloat(service.metrics.memory) / 1024) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-medium text-gray-600 dark:text-gray-300 tabular-nums">
+                    {formatMemory(parseFloat(service.metrics.memory))}
+                  </span>
+                </div>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">Memory</p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <Activity className="w-3 h-3 text-gray-500 dark:text-gray-400" />
-                <span className="text-xs font-medium text-gray-600 dark:text-gray-300 tabular-nums">
-                  {service.metrics.network}
-                </span>
+              {/* Network I/O */}
+              <div>
+                <div className="flex items-center gap-2">
+                  <Activity className="w-3 h-3 text-gray-500 dark:text-gray-400" />
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-300 tabular-nums">
+                        {service.metrics.network}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">Network I/O</p>
               </div>
             </div>
           )}

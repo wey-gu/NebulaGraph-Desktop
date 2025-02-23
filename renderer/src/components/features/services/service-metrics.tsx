@@ -60,11 +60,11 @@ export function ServiceMetrics({ service }: ServiceMetricsProps) {
             <div className="flex-1 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-blue-500 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(100, service.metrics.cpu)}%` }}
+                style={{ width: `${Math.min(100, parseFloat(service.metrics.cpu))}%` }}
               />
             </div>
             <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-              {Math.round(service.metrics.cpu)}%
+              {parseFloat(service.metrics.cpu).toFixed(1)}%
             </span>
           </div>
         </div>
@@ -75,7 +75,7 @@ export function ServiceMetrics({ service }: ServiceMetricsProps) {
             <span className="text-xs font-medium">Memory</span>
           </div>
           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {formatMemory(service.metrics.memory)}
+            {formatMemory(parseFloat(service.metrics.memory))}
           </p>
         </div>
 
@@ -85,7 +85,7 @@ export function ServiceMetrics({ service }: ServiceMetricsProps) {
             <span className="text-xs font-medium">Uptime</span>
           </div>
           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {formatUptime(service.metrics.uptime)}
+            {service.metrics.uptime ? formatUptime(service.metrics.uptime) : 'N/A'}
           </p>
         </div>
 

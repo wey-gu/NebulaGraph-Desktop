@@ -7,7 +7,7 @@
     "dev": "concurrently \"cd renderer && npm run dev\" \"cross-env NODE_ENV=development npm run dev:electron\"",
     "dev:electron": "tsc -p electron/tsconfig.json && electron .",
     "build:electron": "tsc -p electron/tsconfig.json",
-    "build:next": "cd renderer && next build",
+    "build:next": "cd renderer && npm run build",
     "build": "cross-env NODE_ENV=production npm run build:electron && npm run build:next",
     "start": "cross-env NODE_ENV=production electron .",
     "pack": "electron-builder --dir",
@@ -19,6 +19,7 @@
   "build": {
     "appId": "com.nebulagraph.desktop",
     "productName": "NebulaGraph Desktop",
+    "icon": "assets/app_icon.png",
     "files": [
       "dist/**/*",
       "renderer/out/**/*"
@@ -37,14 +38,17 @@
       "category": "public.app-category.developer-tools",
       "target": ["dmg"],
       "hardenedRuntime": true,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "icon": "assets/app_icon.png"
     },
     "win": {
-      "target": ["nsis"]
+      "target": ["nsis"],
+      "icon": "assets/app_icon.png"
     },
     "linux": {
       "target": ["AppImage"],
-      "category": "Development"
+      "category": "Development",
+      "icon": "assets/app_icon.png"
     },
     "nsis": {
       "oneClick": false,

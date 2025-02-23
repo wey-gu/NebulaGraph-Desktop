@@ -9,7 +9,11 @@ const exec = promisify(execCallback);
 interface ServiceStatus {
   name: string;
   status: 'running' | 'stopped' | 'error';
-  health: 'healthy' | 'unhealthy' | 'starting' | 'unknown';
+  health: {
+    status: 'healthy' | 'unhealthy' | 'starting' | 'unknown';
+    lastCheck: string;
+    failureCount: number;
+  };
   metrics: {
     cpu: string;
     memory: string;
@@ -305,7 +309,7 @@ export class DockerService {
       while (retries < maxRetries) {
         const currentStatus = await this.getServicesStatus();
         const allHealthy = Object.values(currentStatus).every(
-          status => status.status === 'running' && status.health === 'healthy'
+          status => status.status === 'running' && status.health.status === 'healthy'
         );
         
         if (allHealthy) {
@@ -327,7 +331,7 @@ export class DockerService {
       DockerService.servicesStarting = false;
       const finalStatus = await this.getServicesStatus();
       const unhealthyServices = Object.entries(finalStatus)
-        .filter(([_, status]) => status.status !== 'running' || status.health !== 'healthy')
+        .filter(([_, status]) => status.status !== 'running' || status.health.status !== 'healthy')
         .map(([name, _]) => name);
 
       return {
@@ -399,54 +403,59 @@ export class DockerService {
   private async getServiceHealth(serviceName: string): Promise<'healthy' | 'unhealthy' | 'starting' | 'unknown'> {
     try {
       // First check Docker health status
-      const { stdout: healthStatus } = await exec(
-        `docker ps --filter "name=${this.getContainerName(serviceName)}" --format "{{.Status}}"`
-      );
-
-      if (healthStatus.includes('(healthy)')) return 'healthy';
-      if (healthStatus.includes('(unhealthy)')) return 'unhealthy';
-      if (healthStatus.includes('starting')) return 'starting';
-      if (healthStatus.includes('Up')) return 'starting'; // Consider "Up" state as starting
-
-      // If no health status from Docker, try HTTP health check
-      const { stdout: containerInfo } = await exec(
-        `docker inspect ${this.getContainerName(serviceName)}`
-      );
+      const command = `docker ps --filter "name=${this.getContainerName(serviceName)}" --format "{{.Status}}"`;
+      console.log(`🏥 Checking health for ${serviceName} with command:`, command);
       
-      const container = JSON.parse(containerInfo)[0];
-      
-      if (!container || !container.State.Running) {
-        return 'unknown';
+      const { stdout: healthStatus } = await exec(command);
+      const status = healthStatus.trim().toLowerCase();
+      console.log(`🏥 Raw health status for ${serviceName}:`, healthStatus);
+      console.log(`🏥 Processed status for ${serviceName}:`, status);
+
+      if (status.includes('(healthy)')) {
+        console.log(`✅ ${serviceName} is healthy`);
+        return 'healthy';
       }
-
-      // Get container IP
-      const networks = container.NetworkSettings.Networks;
-      const ip = networks['nebulagraph-desktop_nebula-net']?.IPAddress || 
-                 networks['docker_nebula-net']?.IPAddress;
-      if (!ip) return 'unknown';
-
-      // Try HTTP health check
-      try {
-        const healthCheckPort = this.getHealthCheckPort(serviceName);
-        if (!healthCheckPort) return 'unknown';
-
-        let curlResult;
-        if (process.platform === 'darwin') {
-          const { stdout } = await exec(
-            `curl -s -o /dev/null -w "%{http_code}" http://${ip}:${healthCheckPort}/status`
-          );
-          curlResult = stdout;
-        } else {
-          // For non-macOS platforms, assume service is starting if we can reach this point
-          curlResult = '200';
-        }
-
-        return curlResult === '200' ? 'healthy' : 'unhealthy';
-      } catch (error) {
+      if (status.includes('(unhealthy)')) {
+        console.log(`❌ ${serviceName} is unhealthy`);
         return 'unhealthy';
       }
+      if (status.includes('starting')) {
+        console.log(`🔄 ${serviceName} is starting`);
+        return 'starting';
+      }
+      
+      // If container is running but no health status, try HTTP health check
+      if (status.includes('up')) {
+        console.log(`⚡ ${serviceName} is up, trying HTTP health check`);
+        try {
+          const healthCheckPort = this.getHealthCheckPort(serviceName);
+          if (!healthCheckPort) {
+            console.log(`❌ No health check port for ${serviceName}`);
+            return 'unknown';
+          }
+
+          const healthCommand = `curl -s -f http://localhost:${healthCheckPort}/status`;
+          console.log(`🔍 HTTP health check command:`, healthCommand);
+          
+          const { stdout } = await exec(healthCommand);
+          console.log(`🔍 HTTP health check response:`, stdout);
+          
+          if (stdout.includes('ok') || stdout.includes('healthy')) {
+            console.log(`✅ HTTP health check passed for ${serviceName}`);
+            return 'healthy';
+          }
+          console.log(`❌ HTTP health check failed for ${serviceName}`);
+          return 'unhealthy';
+        } catch (error) {
+          console.log(`⏳ HTTP health check error for ${serviceName}, considering as starting:`, error);
+          return 'starting';
+        }
+      }
+
+      console.log(`❓ Unknown status for ${serviceName}`);
+      return 'unknown';
     } catch (error) {
-      console.error(`Health check error for ${serviceName}:`, error);
+      console.error(`❌ Health check error for ${serviceName}:`, error);
       return 'unknown';
     }
   }
@@ -469,6 +478,7 @@ export class DockerService {
   async getServicesStatus(): Promise<Record<string, ServiceStatus>> {
     // Return cached status if services are still starting
     if (DockerService.servicesStarting && Object.keys(DockerService.lastServiceStatus).length > 0) {
+      console.log('🔄 Returning cached status while services are starting:', DockerService.lastServiceStatus);
       return DockerService.lastServiceStatus;
     }
 
@@ -477,13 +487,21 @@ export class DockerService {
       const statusPromises = Object.entries(this.serviceConfigs).map(async ([serviceName, config]) => {
         try {
           const containerName = this.getContainerName(serviceName);
+          console.log(`📋 Checking status for ${serviceName} (${containerName})`);
+          
           const { stdout: inspectOutput } = await exec(`docker inspect ${containerName} || echo "not-found"`);
+          console.log(`🔍 Inspect output for ${serviceName}:`, inspectOutput.substring(0, 100) + '...');
           
           if (inspectOutput === "not-found") {
+            console.log(`❌ Container not found for ${serviceName}`);
             services[serviceName] = {
               name: config.name,
               status: 'stopped',
-              health: 'unknown',
+              health: {
+                status: 'unknown',
+                lastCheck: new Date().toISOString(),
+                failureCount: 0
+              },
               metrics: null,
               ports: config.ports,
               logs: []
@@ -493,7 +511,10 @@ export class DockerService {
 
           const inspectData = JSON.parse(inspectOutput)[0];
           const isRunning = inspectData?.State?.Running === true;
+          console.log(`⚡ Container running state for ${serviceName}:`, isRunning);
+          
           const health = await this.getServiceHealth(serviceName);
+          console.log(`💚 Health status for ${serviceName}:`, health);
 
           if (isRunning) {
             // Get metrics in parallel
@@ -503,11 +524,16 @@ export class DockerService {
 
             const { stdout: statsOutput } = await metricsPromise;
             const [cpu, mem, net] = statsOutput.split(';');
+            console.log(`📊 Metrics for ${serviceName}:`, { cpu, mem, net });
             
             services[serviceName] = {
               name: config.name,
               status: 'running',
-              health,
+              health: {
+                status: health,
+                lastCheck: new Date().toISOString(),
+                failureCount: health === 'unhealthy' ? 1 : 0
+              },
               metrics: {
                 cpu: cpu?.replace('%', '') || '0',
                 memory: mem?.split('/')[0].trim() || '0',
@@ -517,20 +543,30 @@ export class DockerService {
               logs: []
             };
           } else {
+            console.log(`⏹️ Service ${serviceName} is not running`);
             services[serviceName] = {
               name: config.name,
               status: 'stopped',
-              health: 'unknown',
+              health: {
+                status: 'unknown',
+                lastCheck: new Date().toISOString(),
+                failureCount: 0
+              },
               metrics: null,
               ports: config.ports,
               logs: []
             };
           }
         } catch (error) {
+          console.error(`❌ Error getting status for ${serviceName}:`, error);
           services[serviceName] = {
             name: config.name,
             status: 'error',
-            health: 'unknown',
+            health: {
+              status: 'unknown',
+              lastCheck: new Date().toISOString(),
+              failureCount: 1
+            },
             metrics: null,
             ports: config.ports,
             logs: []
@@ -539,10 +575,11 @@ export class DockerService {
       });
 
       await Promise.all(statusPromises);
+      console.log('✅ Final services status:', services);
       DockerService.lastServiceStatus = services;
       return services;
     } catch (error) {
-      console.error('Error getting services status:', error);
+      console.error('❌ Error getting services status:', error);
       return DockerService.lastServiceStatus;
     }
   }

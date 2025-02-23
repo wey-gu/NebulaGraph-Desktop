@@ -1,11 +1,17 @@
 export interface ServiceStatus {
   name: string;
   status: 'running' | 'stopped' | 'error';
-  health: 'healthy' | 'unhealthy' | 'starting' | 'unknown';
+  health: {
+    status: 'healthy' | 'unhealthy' | 'starting' | 'unknown';
+    lastCheck: string;
+    failureCount: number;
+  };
   metrics: {
     cpu: string;
     memory: string;
     network: string;
+    uptime?: number;
+    connections?: number;
   } | null;
   ports: string[];
   logs: string[];

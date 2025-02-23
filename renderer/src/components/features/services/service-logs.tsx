@@ -27,10 +27,10 @@ export function ServiceLogs({ serviceName, isOpen, onClose }: ServiceLogsProps) 
   const logsEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
-  const scrollTimeoutRef = useRef<NodeJS.Timeout>()
-  const resizeObserverRef = useRef<ResizeObserver>()
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const resizeObserverRef = useRef<ResizeObserver | null>(null)
 
-  useClickAway(containerRef, () => {
+  useClickAway(containerRef as React.RefObject<HTMLElement>, () => {
     if (isOpen) onClose()
   })
 
@@ -51,6 +51,7 @@ export function ServiceLogs({ serviceName, isOpen, onClose }: ServiceLogsProps) 
       toast.error('Failed to fetch logs', {
         description: 'Could not retrieve service logs. Please try again.'
       })
+      console.error('Failed to fetch logs:', error);
     } finally {
       setIsLoading(false)
     }
@@ -268,7 +269,7 @@ export function ServiceLogs({ serviceName, isOpen, onClose }: ServiceLogsProps) 
             ) : logs.length === 0 ? (
               <EmptyState />
             ) : (
-              <LogsList logs={filteredLogs} logsEndRef={logsEndRef} />
+              <LogsList logs={filteredLogs} logsEndRef={logsEndRef as React.RefObject<HTMLDivElement>} />
             )}
 
             {/* Auto-scroll indicator */}
@@ -348,7 +349,10 @@ function EmptyState() {
   )
 }
 
-function LogsList({ logs, logsEndRef }: { logs: LogEntry[], logsEndRef: React.RefObject<HTMLDivElement> }) {
+function LogsList({ logs, logsEndRef }: { 
+  logs: LogEntry[], 
+  logsEndRef: React.RefObject<HTMLDivElement> 
+}) {
   return (
     <div className="space-y-1">
       {logs.map((log, index) => (
