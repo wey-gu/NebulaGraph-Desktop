@@ -21,18 +21,32 @@
     "productName": "NebulaGraph Desktop",
     "icon": "assets/app_icon.png",
     "files": [
-      "dist/**/*",
-      "renderer/out/**/*"
+      "dist/**/*"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/**/*"
     ],
     "extraResources": [
       {
         "from": "assets/NebulaGraph-Desktop",
-        "to": "NebulaGraph-Desktop",
+        "to": "resources/NebulaGraph-Desktop",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "renderer/out",
+        "to": "app",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "renderer/public",
+        "to": "app/public",
         "filter": ["**/*"]
       }
     ],
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "assets"
     },
     "mac": {
       "category": "public.app-category.developer-tools",

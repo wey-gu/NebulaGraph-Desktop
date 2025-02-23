@@ -151,17 +151,18 @@ jobs:
       - name: Create distribution
         run: |
           # Set architecture-specific build options
-          if [ "${{ matrix.platform }}" = "mac-arm64" ]; then
-            export ELECTRON_ARCH=arm64
-          elif [ "${{ matrix.platform }}" = "mac-x64" ]; then
-            export ELECTRON_ARCH=x64
-          elif [ "${{ matrix.platform }}" = "win-x64" ]; then
-            export ELECTRON_ARCH=x64
-          fi
+          if ($env:matrix_platform -eq "mac-arm64") {
+            $env:ELECTRON_ARCH = "arm64"
+          } elseif ($env:matrix_platform -eq "mac-x64") {
+            $env:ELECTRON_ARCH = "x64"
+          } elseif ($env:matrix_platform -eq "win-x64") {
+            $env:ELECTRON_ARCH = "x64"
+          }
           npm run dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          matrix_platform: ${{ matrix.platform }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

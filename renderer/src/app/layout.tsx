@@ -1,13 +1,9 @@
-import type { Metadata } from "next";
+'use client';
+
 import { GeistSans } from "geist/font/sans";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from 'sonner'
 import "./globals.css";
-
-export const metadata: Metadata = {
-  title: "NebulaGraph",
-  description: "Modern Distributed Graph Database",
-};
 
 export default function RootLayout({
   children,
@@ -16,7 +12,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={GeistSans.className}>
+      <body className={`${GeistSans.variable} font-sans`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

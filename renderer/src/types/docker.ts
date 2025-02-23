@@ -52,10 +52,19 @@ export interface DockerAPI {
   getLogs: (serviceName: string) => Promise<Array<LogEntry>>;
 }
 
+export interface MainProcessLog {
+  level: 'info' | 'warn' | 'error';
+  message: string;
+  timestamp: string;
+}
+
 declare global {
   interface Window {
     electronAPI: {
       docker: DockerAPI;
+      logs: {
+        subscribe: (callback: (log: MainProcessLog) => void) => () => void;
+      };
     };
   }
 } 

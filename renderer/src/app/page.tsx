@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { ServicesGrid } from '@/components/features/services/services-grid'
-import { DockerAPI, ServiceStatus } from '@/types/docker'
+import { DockerAPI, ServiceStatus, MainProcessLog } from '@/types/docker'
 import { HeroSection } from '@/components/blocks/hero-section-dark'
 import { Spinner } from '@/components/ui/spinner'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
@@ -16,6 +16,9 @@ declare global {
   interface Window {
     electronAPI: {
       docker: DockerAPI;
+      logs: {
+        subscribe: (callback: (log: MainProcessLog) => void) => () => void;
+      };
     };
   }
 }
@@ -81,7 +84,7 @@ export default function Home() {
       // Quick Docker status check first
       const result = await window.electronAPI.docker.status()
       setIsDockerRunning(result)
-      
+
       if (!result) {
         setStatus('Docker is not running')
         setShowDockerSetup(true)
@@ -208,7 +211,7 @@ export default function Home() {
       )}
       {!showDashboard ? (
         <HeroSection
-          title="NebulaGraph Desktop"
+          title="Open Source Graph Database"
           subtitle={{
             regular: "Graph Infra for AI Era, ",
             gradient: "Distributed Graph at Scale",
@@ -217,8 +220,8 @@ export default function Home() {
           ctaText="Launch NebulaGraph Desktop Console"
           ctaHref="https://github.com/vesoft-inc/nebula"
           bottomImage={{
-            light: "/nebula_arch.mp4",
-            dark: "/nebula_arch.mp4",
+            light: "./nebula_arch.mp4",
+            dark: "./nebula_arch.mp4",
           }}
           gridOptions={{
             angle: 65,
@@ -395,7 +398,7 @@ export default function Home() {
                     {isLoading ? (
                       <div className="flex items-center gap-3">
                         <Spinner size="sm" className="text-gray-700 dark:text-gray-200" />
-                        <span className="font-medium">Starting...</span>
+                        <span className="font-medium"></span>
                       </div>
                     ) : (
                       <div className="flex items-center gap-3">
@@ -431,7 +434,7 @@ export default function Home() {
                     {isLoading ? (
                       <div className="flex items-center gap-3">
                         <Spinner size="sm" className="text-gray-600 dark:text-gray-300" />
-                        <span className="font-medium">Stopping...</span>
+                        <span className="font-medium"></span>
                       </div>
                     ) : (
                       <div className="flex items-center gap-3">
@@ -497,7 +500,7 @@ export default function Home() {
                   </button>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     {Object.values(services).some(s => s.name === 'studio' && s.status === 'running')
-                      ? <span className="flex items-center gap-1"><Info className="w-3.5 h-3.5" /> hostname: `graphd`</span>
+                      ? <span className="flex items-center gap-1"><Info className="w-3.5 h-3.5" /> IP address: `graphd`</span>
                       : ''}
                   </p>
                 </div>

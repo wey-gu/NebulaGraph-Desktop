@@ -1,10 +1,41 @@
-import { exec } from 'child_process';
+import { exec as execCallback } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { app } from 'electron';
+import { logger } from '../utils/logger';
 
-const execAsync = promisify(exec);
+interface ExecResult {
+  stdout: string;
+  stderr: string;
+}
+
+const exec = promisify(execCallback) as (command: string, options?: { env?: NodeJS.ProcessEnv }) => Promise<ExecResult>;
+
+// Common Docker binary locations
+const DOCKER_PATHS: Record<NodeJS.Platform, string[]> = {
+  darwin: [
+    '/usr/local/bin/docker',
+    '/opt/homebrew/bin/docker',
+    '/Applications/Docker.app/Contents/Resources/bin/docker'
+  ],
+  linux: [
+    '/usr/bin/docker',
+    '/usr/local/bin/docker'
+  ],
+  win32: [
+    'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe',
+    'C:\\Program Files\\Docker\\Docker\\resources\\docker.exe'
+  ],
+  aix: [],
+  android: [],
+  freebsd: [],
+  haiku: [],
+  openbsd: [],
+  sunos: [],
+  cygwin: [],
+  netbsd: []
+};
 
 interface DockerComposeStatus {
   isInstalled: boolean;
@@ -30,18 +61,91 @@ export class DockerChecker {
   private resourcesPath: string;
   private imagesPath: string;
   private manifestPath: string;
+  private dockerPath: string | null = null;
+  private customEnv: NodeJS.ProcessEnv;
 
   constructor() {
     // In development, use the assets directory directly
-    // In production, use the extraResources path
+    // In production, use the app's resources path
     const isDev = process.env.NODE_ENV === 'development';
     const basePath = isDev 
       ? path.join(process.cwd(), 'assets')
-      : path.join(app.getPath('userData'), 'resources');
+      : path.join(process.resourcesPath, 'resources');
 
     this.resourcesPath = path.join(basePath, 'NebulaGraph-Desktop');
     this.imagesPath = path.join(this.resourcesPath, 'images');
     this.manifestPath = path.join(this.imagesPath, 'manifest.json');
+
+    // Initialize environment with additional paths
+    this.customEnv = {
+      ...process.env,
+      PATH: this.getEnhancedPath()
+    };
+
+    logger.info('🔧 Environment PATH:', this.customEnv.PATH);
+    logger.info('🐳 Docker resources path:', this.resourcesPath);
+  }
+
+  private getEnhancedPath(): string {
+    const platform = process.platform;
+    const currentPath = process.env.PATH || '';
+    const additionalPaths = [];
+
+    // Add platform-specific paths
+    if (platform === 'darwin') {
+      additionalPaths.push(
+        '/usr/local/bin',
+        '/opt/homebrew/bin',
+        '/Applications/Docker.app/Contents/Resources/bin',
+        '/usr/bin'
+      );
+    } else if (platform === 'linux') {
+      additionalPaths.push(
+        '/usr/bin',
+        '/usr/local/bin'
+      );
+    } else if (platform === 'win32') {
+      additionalPaths.push(
+        'C:\\Program Files\\Docker\\Docker\\resources\\bin',
+        'C:\\Program Files\\Docker\\Docker\\resources'
+      );
+    }
+
+    return [...new Set([...additionalPaths, ...currentPath.split(path.delimiter)])].join(path.delimiter);
+  }
+
+  private async findDockerPath(): Promise<string | null> {
+    if (this.dockerPath) return this.dockerPath;
+
+    const platform = process.platform;
+    const paths = DOCKER_PATHS[platform] || [];
+
+    for (const dockerPath of paths) {
+      try {
+        await fs.access(dockerPath);
+        logger.info('✅ Found Docker binary at:', dockerPath);
+        this.dockerPath = dockerPath;
+        return dockerPath;
+      } catch {
+        logger.info('❌ Docker not found at:', dockerPath);
+        continue;
+      }
+    }
+
+    // If we couldn't find Docker in known locations, try PATH
+    try {
+      const { stdout } = await exec('which docker', { env: this.customEnv });
+      const pathFromWhich = stdout.trim();
+      if (pathFromWhich) {
+        logger.info('✅ Found Docker binary through PATH at:', pathFromWhich);
+        this.dockerPath = pathFromWhich;
+        return pathFromWhich;
+      }
+    } catch (error) {
+      logger.warn('⚠️ Could not find Docker through PATH');
+    }
+
+    return null;
   }
 
   private getContainerName(serviceName: string): string {
@@ -49,76 +153,112 @@ export class DockerChecker {
   }
 
   async checkDockerSystem(): Promise<DockerSystemStatus> {
+    logger.info('🔍 Starting Docker system check...');
+    
     try {
-      // Check if Docker CLI is installed
-      let dockerVersion: string | undefined;
-      let isInstalled = false;
-      try {
-        const { stdout } = await execAsync('docker --version');
-        dockerVersion = stdout.trim();
-        isInstalled = true;
-      } catch (error) {
-        return {
-          isInstalled: false,
-          isRunning: false,
-          error: 'Docker is not installed. Please install Docker Desktop.'
-        };
-      }
+      // Check Docker CLI
+      logger.info('🐳 Checking Docker CLI...');
+      const dockerVersion = await this.execCommand('docker --version');
+      logger.info('✓ Docker CLI version:', dockerVersion);
 
-      // Check if Docker daemon is running
-      let isRunning = false;
+      // Check Docker daemon
+      logger.info('🔄 Checking Docker daemon...');
       try {
-        await execAsync('docker info');
-        isRunning = true;
+        const dockerInfo = await this.execCommand('docker info');
+        logger.info('✓ Docker daemon is running');
+        logger.info('📊 Docker info highlights:', this.parseDockerInfo(dockerInfo));
       } catch (error) {
+        logger.error('❌ Docker daemon check failed:', error);
         return {
           isInstalled: true,
           isRunning: false,
           version: dockerVersion,
-          error: 'Docker daemon is not running. Please start Docker Desktop.'
+          error: 'Docker daemon is not running'
         };
       }
 
       // Check Docker Compose
-      let compose: DockerComposeStatus = { isInstalled: false };
+      logger.info('🔄 Checking Docker Compose...');
+      let composeVersion;
       try {
-        const { stdout: composeVersion } = await execAsync('docker compose version');
-        compose = {
-          isInstalled: true,
-          version: composeVersion.trim()
-        };
+        // Try Docker Compose V2 first
+        composeVersion = await this.execCommand('docker compose version');
+        logger.info('✓ Docker Compose V2 found:', composeVersion);
       } catch (error) {
+        logger.warn('⚠️ Docker Compose V2 not found, trying legacy version...');
         try {
-          const { stdout: legacyVersion } = await execAsync('docker-compose --version');
-          compose = {
-            isInstalled: true,
-            version: legacyVersion.trim()
-          };
+          // Try legacy docker-compose
+          composeVersion = await this.execCommand('docker-compose --version');
+          logger.info('✓ Legacy Docker Compose found:', composeVersion);
         } catch (composeError) {
-          if (isRunning) {
-            return {
-              isInstalled: true,
-              isRunning: true,
-              version: dockerVersion,
-              compose: { isInstalled: false },
-              error: 'Docker Compose is not installed. Please install Docker Compose v2.'
-            };
-          }
+          logger.error('❌ No Docker Compose installation found');
+          return {
+            isInstalled: true,
+            isRunning: true,
+            version: dockerVersion,
+            compose: {
+              isInstalled: false,
+              version: undefined
+            },
+            error: 'Docker Compose not found'
+          };
         }
       }
 
+      logger.info('✅ All Docker system checks passed');
       return {
-        isInstalled,
-        isRunning,
+        isInstalled: true,
+        isRunning: true,
         version: dockerVersion,
-        compose
+        compose: {
+          isInstalled: true,
+          version: composeVersion
+        }
       };
     } catch (error) {
+      logger.error('❌ Docker system check failed:', error);
       return {
         isInstalled: false,
         isRunning: false,
-        error: error instanceof Error ? error.message : 'Unknown error checking Docker'
+        error: error instanceof Error ? error.message : 'Unknown error checking Docker system'
       };
+    }
+  }
+
+  private parseDockerInfo(info: string): object {
+    const highlights: any = {};
+    const lines = info.split('\n');
+    
+    for (const line of lines) {
+      if (line.includes('Server Version:')) highlights.serverVersion = line.split(':')[1].trim();
+      if (line.includes('OS/Arch:')) highlights.osArch = line.split(':')[1].trim();
+      if (line.includes('Kernel Version:')) highlights.kernelVersion = line.split(':')[1].trim();
+    }
+    
+    return highlights;
+  }
+
+  async execCommand(command: string): Promise<string> {
+    try {
+      logger.info('🔄 Executing command:', command);
+      
+      // If command starts with 'docker', try to use full path
+      if (command.startsWith('docker ')) {
+        const dockerPath = await this.findDockerPath();
+        if (dockerPath) {
+          command = command.replace('docker ', `"${dockerPath}" `);
+        }
+      }
+
+      const { stdout, stderr } = await exec(command, { env: this.customEnv });
+      if (stderr) {
+        logger.warn('⚠️ Command stderr:', stderr);
+      }
+      return stdout.trim();
+    } catch (error) {
+      logger.error('❌ Command failed:', command);
+      logger.error('Error details:', error);
+      throw error;
     }
   }
 
@@ -136,7 +276,7 @@ export class DockerChecker {
       for (const [key, config] of Object.entries<ImageConfig>(manifest.images)) {
         const fullImageName = `${config.name}:${config.tag}`;
         try {
-          const { stdout } = await execAsync(`docker image inspect ${fullImageName}`);
+          const { stdout } = await exec(`docker image inspect ${fullImageName}`);
           console.log(`✓ Image ${fullImageName} exists`);
         } catch (error) {
           console.log(`✕ Image ${fullImageName} not found`);
@@ -175,7 +315,7 @@ export class DockerChecker {
 
         try {
           console.log(`Loading image ${fullImageName}...`);
-          await execAsync(`docker load -i "${imagePath}"`);
+          await exec(`docker load -i "${imagePath}"`);
           console.log(`✓ Loaded ${fullImageName}`);
         } catch (error) {
           console.error(`Failed to load ${fullImageName}:`, error);
@@ -224,7 +364,7 @@ export class DockerChecker {
       // }
 
       // First check Docker health status
-      const { stdout: healthStatus } = await execAsync(
+      const { stdout: healthStatus } = await exec(
         `docker ps --filter "name=${this.getContainerName(serviceName)}" --format "{{.Status}}"`
       );
 

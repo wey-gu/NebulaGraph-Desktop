@@ -1,10 +1,12 @@
 import { exec as execCallback, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
-import * as fs from 'fs';
+import * as fs from 'fs/promises';
 import { DockerChecker } from './docker-checker';
+import { app } from 'electron';
+import { logger } from '../utils/logger';
 
-const exec = promisify(execCallback);
+const exec = promisify(execCallback) as (command: string, options?: { env?: NodeJS.ProcessEnv }) => Promise<{ stdout: string; stderr: string }>;
 
 interface ServiceStatus {
   name: string;
@@ -95,9 +97,19 @@ export class DockerService {
   private static servicesStarting: boolean = false;
   private static lastServiceStatus: Record<string, ServiceStatus> = {};
 
+  private static composeFileCache: {
+    path: string;
+    lastCheck: number;
+    exists: boolean;
+  } | null = null;
+  private static COMPOSE_CACHE_DURATION = 1000 * 60; // 1 minute
+
   constructor() {
+    logger.info('🚀 Initializing Docker Service...');
     this.dockerChecker = new DockerChecker();
-    this.initializePaths();
+    this.initializePaths(true).catch(error => {
+      logger.error('Failed to initialize paths:', error);
+    });
   }
 
   // Add cache management methods
@@ -114,17 +126,109 @@ export class DockerService {
     };
   }
 
-  private async initializePaths() {
-    const resourcesPath = await this.dockerChecker.getResourcesPath();
-    this.composeFilePath = path.join(resourcesPath, 'docker-compose.yml');
-    this.dataDir = path.join(resourcesPath, 'data');
-    this.logsDir = path.join(resourcesPath, 'logs');
+  private async verifyComposeFile(): Promise<boolean> {
+    const now = Date.now();
     
-    this.ensureDirectories();
-    console.log('🐳 Initializing Docker service with compose file:', this.composeFilePath);
+    // Use cache if available and recent
+    if (DockerService.composeFileCache && 
+        DockerService.composeFileCache.path === this.composeFilePath &&
+        (now - DockerService.composeFileCache.lastCheck) < DockerService.COMPOSE_CACHE_DURATION) {
+      return DockerService.composeFileCache.exists;
+    }
+
+    try {
+      await fs.access(this.composeFilePath);
+      const content = await fs.readFile(this.composeFilePath, 'utf8');
+      const isValid = content.includes(this.dataDir.replace(/\\/g, '/'));
+      
+      // Update cache
+      DockerService.composeFileCache = {
+        path: this.composeFilePath,
+        lastCheck: now,
+        exists: isValid
+      };
+      
+      return isValid;
+    } catch {
+      DockerService.composeFileCache = {
+        path: this.composeFilePath,
+        lastCheck: now,
+        exists: false
+      };
+      return false;
+    }
   }
 
-  private ensureDirectories() {
+  public async initializePaths(force: boolean = false) {
+    const userDataPath = app.getPath('userData');
+    this.dataDir = path.join(userDataPath, '.nebulagraph-desktop');
+    this.logsDir = path.join(this.dataDir, 'logs');
+    this.composeFilePath = path.join(this.dataDir, 'docker-compose.yml');
+
+    // Only log paths if forced or first time
+    if (force) {
+      logger.info('📂 Setting up service paths...');
+      logger.info('📁 Data directory:', this.dataDir);
+      logger.info('📁 Logs directory:', this.logsDir);
+      logger.info('📄 Compose file:', this.composeFilePath);
+    }
+
+    await this.ensureDirectories();
+    
+    // Check if we need to set up compose file
+    const composeExists = await this.verifyComposeFile();
+    if (!composeExists) {
+      await this.setupComposeFile();
+    }
+  }
+
+  private async setupComposeFile() {
+    logger.info('🔧 Setting up docker-compose.yml...');
+    try {
+      // Get the template compose file from resources
+      const resourcesPath = await this.dockerChecker.getResourcesPath();
+      const templateComposePath = path.join(resourcesPath, 'docker-compose.yml');
+      logger.info('📄 Template compose path:', templateComposePath);
+
+      // Check if template exists
+      try {
+        await fs.access(templateComposePath);
+      } catch (error) {
+        logger.error('❌ Template compose file not found at:', templateComposePath);
+        throw new Error('Template compose file not found');
+      }
+
+      // Read template content
+      logger.info('📝 Creating new compose file...');
+      const templateContent = await fs.readFile(templateComposePath, 'utf8');
+      
+      // Replace paths with absolute paths, ensuring forward slashes for Docker
+      const dataPath = this.dataDir.replace(/\\/g, '/');
+      const logsPath = this.logsDir.replace(/\\/g, '/');
+      
+      const updatedContent = templateContent
+        .replace(/\.\/(data|logs)/g, (_, dir) => dir === 'data' ? dataPath : logsPath)
+        .replace(/\${PWD}\/(data|logs)/g, (_, dir) => dir === 'data' ? dataPath : logsPath);
+      
+      // Write the updated compose file
+      await fs.writeFile(this.composeFilePath, updatedContent);
+      
+      // Update cache
+      DockerService.composeFileCache = {
+        path: this.composeFilePath,
+        lastCheck: Date.now(),
+        exists: true
+      };
+      
+      logger.info('✅ Compose file created successfully');
+    } catch (error) {
+      logger.error('❌ Failed to setup compose file:', error);
+      throw error;
+    }
+  }
+
+  private async ensureDirectories() {
+    logger.info('🔧 Ensuring directories exist...');
     const dirs = [
       path.join(this.dataDir, 'meta'),
       path.join(this.dataDir, 'storage'),
@@ -133,33 +237,37 @@ export class DockerService {
       path.join(this.logsDir, 'graph')
     ];
 
-    dirs.forEach(dir => {
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
+    try {
+      for (const dir of dirs) {
+        await fs.mkdir(dir, { recursive: true });
+        logger.info('✅ Created directory:', dir);
       }
-    });
+      logger.info('✅ All directories created successfully');
+    } catch (error) {
+      logger.error('❌ Failed to create directories:', error);
+      throw error;
+    }
   }
 
   async checkDockerStatus(): Promise<boolean> {
-    const status = await this.dockerChecker.checkDocker();
-    if (!status.isInstalled) {
-      console.error('Docker is not installed:', status.error);
+    logger.info('🔍 Checking Docker status...');
+    try {
+      const status = await this.dockerChecker.checkDockerSystem();
+      logger.info('Docker status:', status);
+      return status.isInstalled && status.isRunning;
+    } catch (error) {
+      logger.error('❌ Docker status check failed:', error);
       return false;
     }
-    if (!status.isRunning) {
-      console.error('Docker is not running:', status.error);
-      return false;
-    }
-    if (!status.compose?.isInstalled) {
-      console.error('Docker Compose is not available:', status.error);
-      return false;
-    }
-    return true;
   }
 
   async getSystemStatus(): Promise<DockerSystemStatus> {
-    return this.dockerChecker.checkDocker();
+    console.log('🔍 Getting Docker system status...');
+    const status = await this.dockerChecker.checkDocker();
+    console.log('📋 Docker system status:', status);
+    return status;
   }
+
   private async checkPortAvailability(ports: number[]): Promise<{ available: boolean; conflictingPorts: number[] }> {
     const conflictingPorts: number[] = [];
     
@@ -167,14 +275,14 @@ export class DockerService {
       try {
         if (process.platform === 'win32') {
           // Windows command to check port usage
-          const { stdout } = await exec(`netstat -ano | findstr :${port}`);
-          if (stdout.trim()) {
+          const output = await this.dockerChecker.execCommand(`netstat -ano | findstr :${port}`);
+          if (output.trim()) {
             conflictingPorts.push(port);
           }
         } else {
           // macOS/Linux command
-          const { stdout } = await exec(`lsof -i :${port}`);
-          if (stdout.trim()) {
+          const output = await this.dockerChecker.execCommand(`lsof -i :${port}`);
+          if (output.trim()) {
             conflictingPorts.push(port);
           }
         }
@@ -226,8 +334,8 @@ export class DockerService {
         // Try HTTP health check as backup on macOS
         if (process.platform === 'darwin') {
           try {
-            const { stdout } = await exec(`curl -s -f http://localhost:${config.healthCheckPort}/status`);
-            if (stdout.includes('ok') || stdout.includes('healthy')) {
+            const output = await this.dockerChecker.execCommand(`curl -s -f http://localhost:${config.healthCheckPort}/status`);
+            if (output.includes('ok') || output.includes('healthy')) {
               return true;
             }
           } catch (error) {
@@ -248,124 +356,80 @@ export class DockerService {
   async startServices(
     onProgress?: (status: { service: string; attempt: number; maxAttempts: number; state: string }) => void
   ): Promise<{ success: boolean; error?: string }> {
-    if (DockerService.servicesStarting) {
-      return { success: false, error: 'Services are already starting' };
-    }
-
+    logger.info('🚀 Starting NebulaGraph services...');
+    
     try {
-      DockerService.servicesStarting = true;
+      // Ensure directories are initialized first
+      await this.initializePaths();
       
-      // Quick Docker check without image verification
-      const dockerStatus = await this.dockerChecker.checkDocker();
-      if (!dockerStatus.isInstalled || !dockerStatus.isRunning || !dockerStatus.compose?.isInstalled) {
-        return { 
-          success: false, 
-          error: 'Docker system requirements not met. Please check Docker installation.' 
-        };
+      // Check Docker status first
+      const isDockerRunning = await this.checkDockerStatus();
+      if (!isDockerRunning) {
+        const error = 'Docker is not running. Please start Docker Desktop first.';
+        logger.error(error);
+        return { success: false, error };
       }
 
-      // Use cached image check if valid
-      if (!DockerService.isImageCheckCacheValid()) {
-        onProgress?.({
-          service: 'system',
-          attempt: 0,
-          maxAttempts: 1,
-          state: 'Checking Docker images...'
-        });
+      // Execute docker compose up
+      logger.info('📦 Running docker compose up...');
+      const command = `cd "${path.dirname(this.composeFilePath)}" && docker compose up -d`;
+      try {
+        await this.dockerChecker.execCommand(command);
+        logger.info('✅ Services started successfully');
+      } catch (error) {
+        logger.error('❌ Failed to start services:', error);
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to start services' };
+      }
 
-        const imagesLoaded = await this.dockerChecker.ensureImagesLoaded(
-          (current, total, imageName) => {
-            onProgress?.({
-              service: 'system',
-              attempt: current,
-              maxAttempts: total,
-              state: `Loading image: ${imageName}`
-            });
-          }
+      // Wait for services to be healthy
+      logger.info('🔄 Waiting for services to be healthy...');
+      for (const [serviceName, config] of Object.entries(this.serviceConfigs)) {
+        const isHealthy = await this.waitForHealthCheck(
+          serviceName,
+          60,
+          2000,
+          onProgress
         );
-
-        DockerService.updateImageCheckCache(imagesLoaded);
-        
-        if (!imagesLoaded) {
-          DockerService.servicesStarting = false;
-          return { 
-            success: false, 
-            error: 'Failed to load required Docker images.' 
-          };
+        if (!isHealthy) {
+          const error = `Service ${serviceName} failed to become healthy`;
+          logger.error(error);
+          return { success: false, error };
         }
       }
 
-      // Start services
-      const { stdout, stderr } = await exec(`docker compose -f "${this.composeFilePath}" up -d`);
-      
-      // Initial delay reduced to 1 second
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Parallel health checks with reduced timeout
-      const services = Object.keys(this.serviceConfigs);
-      const maxRetries = 20; // 20 * 1 second = 20 seconds total timeout
-      let retries = 0;
-      
-      while (retries < maxRetries) {
-        const currentStatus = await this.getServicesStatus();
-        const allHealthy = Object.values(currentStatus).every(
-          status => status.status === 'running' && status.health.status === 'healthy'
-        );
-        
-        if (allHealthy) {
-          DockerService.servicesStarting = false;
-          return { success: true };
-        }
-
-        onProgress?.({
-          service: 'system',
-          attempt: retries + 1,
-          maxAttempts: maxRetries,
-          state: 'Waiting for services to be healthy...'
-        });
-
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        retries++;
-      }
-
-      DockerService.servicesStarting = false;
-      const finalStatus = await this.getServicesStatus();
-      const unhealthyServices = Object.entries(finalStatus)
-        .filter(([_, status]) => status.status !== 'running' || status.health.status !== 'healthy')
-        .map(([name, _]) => name);
-
-      return {
-        success: unhealthyServices.length === 0,
-        error: unhealthyServices.length > 0 
-          ? `Services ${unhealthyServices.join(', ')} failed to start properly.`
-          : undefined
-      };
+      logger.info('✅ All services are healthy');
+      return { success: true };
     } catch (error) {
-      DockerService.servicesStarting = false;
-      console.error('Failed to start services:', error);
+      logger.error('❌ Failed to start services:', error);
       return { 
         success: false, 
-        error: error instanceof Error ? error.message : 'Failed to start services.' 
+        error: error instanceof Error ? error.message : 'Unknown error starting services'
       };
     }
   }
 
   async stopServices(): Promise<{ success: boolean; error?: string }> {
     try {
+      // Ensure directories are initialized first
+      await this.initializePaths();
+
       if (!await this.checkDockerStatus()) {
         return { success: false, error: 'Docker is not running' };
       }
 
-      const { stdout, stderr } = await exec(`docker compose -f "${this.composeFilePath}" stop`);
-      console.log('Docker Compose stop output:', stdout);
-      
-      if (stderr) {
-        console.warn('Docker Compose stop warnings:', stderr);
+      const command = `cd "${path.dirname(this.composeFilePath)}" && docker compose stop`;
+      try {
+        await this.dockerChecker.execCommand(command);
+        return { success: true };
+      } catch (error) {
+        logger.error('Failed to stop services:', error);
+        return { 
+          success: false, 
+          error: error instanceof Error ? error.message : 'Failed to stop services' 
+        };
       }
-
-      return { success: true };
     } catch (error) {
-      console.error('Failed to stop services:', error);
+      logger.error('Failed to stop services:', error);
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Failed to stop services' 
@@ -375,20 +439,26 @@ export class DockerService {
 
   async cleanupServices(): Promise<{ success: boolean; error?: string }> {
     try {
+      // Ensure directories are initialized first
+      await this.initializePaths();
+
       if (!await this.checkDockerStatus()) {
         return { success: false, error: 'Docker is not running' };
       }
 
-      const { stdout, stderr } = await exec(`docker compose -f "${this.composeFilePath}" down`);
-      console.log('Docker Compose down output:', stdout);
-      
-      if (stderr) {
-        console.warn('Docker Compose down warnings:', stderr);
+      const command = `cd "${path.dirname(this.composeFilePath)}" && docker compose down`;
+      try {
+        await this.dockerChecker.execCommand(command);
+        return { success: true };
+      } catch (error) {
+        logger.error('Failed to cleanup services:', error);
+        return { 
+          success: false, 
+          error: error instanceof Error ? error.message : 'Failed to cleanup services' 
+        };
       }
-
-      return { success: true };
     } catch (error) {
-      console.error('Failed to cleanup services:', error);
+      logger.error('Failed to cleanup services:', error);
       return { 
         success: false, 
         error: error instanceof Error ? error.message : 'Failed to cleanup services' 
@@ -402,60 +472,42 @@ export class DockerService {
 
   private async getServiceHealth(serviceName: string): Promise<'healthy' | 'unhealthy' | 'starting' | 'unknown'> {
     try {
-      // First check Docker health status
-      const command = `docker ps --filter "name=${this.getContainerName(serviceName)}" --format "{{.Status}}"`;
-      console.log(`🏥 Checking health for ${serviceName} with command:`, command);
+      // Get detailed container status
+      const containerName = this.getContainerName(serviceName);
+      const healthCommand = `docker inspect --format '{{.State.Health.Status}}' ${containerName} 2>/dev/null || echo "none"`;
+      logger.info(`🏥 Checking health for ${serviceName} with command:`, healthCommand);
       
-      const { stdout: healthStatus } = await exec(command);
+      const healthStatus = await this.dockerChecker.execCommand(healthCommand);
       const status = healthStatus.trim().toLowerCase();
-      console.log(`🏥 Raw health status for ${serviceName}:`, healthStatus);
-      console.log(`🏥 Processed status for ${serviceName}:`, status);
+      logger.info(`🏥 Health status for ${serviceName}:`, status);
 
-      if (status.includes('(healthy)')) {
-        console.log(`✅ ${serviceName} is healthy`);
-        return 'healthy';
-      }
-      if (status.includes('(unhealthy)')) {
-        console.log(`❌ ${serviceName} is unhealthy`);
-        return 'unhealthy';
-      }
-      if (status.includes('starting')) {
-        console.log(`🔄 ${serviceName} is starting`);
-        return 'starting';
-      }
-      
-      // If container is running but no health status, try HTTP health check
-      if (status.includes('up')) {
-        console.log(`⚡ ${serviceName} is up, trying HTTP health check`);
-        try {
-          const healthCheckPort = this.getHealthCheckPort(serviceName);
-          if (!healthCheckPort) {
-            console.log(`❌ No health check port for ${serviceName}`);
-            return 'unknown';
-          }
-
-          const healthCommand = `curl -s -f http://localhost:${healthCheckPort}/status`;
-          console.log(`🔍 HTTP health check command:`, healthCommand);
-          
-          const { stdout } = await exec(healthCommand);
-          console.log(`🔍 HTTP health check response:`, stdout);
-          
-          if (stdout.includes('ok') || stdout.includes('healthy')) {
-            console.log(`✅ HTTP health check passed for ${serviceName}`);
-            return 'healthy';
-          }
-          console.log(`❌ HTTP health check failed for ${serviceName}`);
+      // Map Docker health status to our status
+      switch (status) {
+        case 'healthy':
+          return 'healthy';
+        case 'unhealthy':
           return 'unhealthy';
-        } catch (error) {
-          console.log(`⏳ HTTP health check error for ${serviceName}, considering as starting:`, error);
-          return 'starting';
-        }
+        case 'starting':
+        case 'none':
+          // If no health status, check if container is running
+          const stateCommand = `docker inspect --format '{{.State.Status}}' ${containerName} 2>/dev/null || echo "none"`;
+          const state = await this.dockerChecker.execCommand(stateCommand);
+          const containerState = state.trim().toLowerCase();
+          
+          if (containerState === 'running') {
+            // For containers without health checks (like storage-activator)
+            if (serviceName === 'storage-activator') {
+              return 'healthy';
+            }
+            // Container is running but still initializing
+            return 'starting';
+          }
+          return 'unknown';
+        default:
+          return 'unknown';
       }
-
-      console.log(`❓ Unknown status for ${serviceName}`);
-      return 'unknown';
     } catch (error) {
-      console.error(`❌ Health check error for ${serviceName}:`, error);
+      logger.error(`❌ Health check error for ${serviceName}:`, error);
       return 'unknown';
     }
   }
@@ -476,24 +528,28 @@ export class DockerService {
   }
 
   async getServicesStatus(): Promise<Record<string, ServiceStatus>> {
-    // Return cached status if services are still starting
-    if (DockerService.servicesStarting && Object.keys(DockerService.lastServiceStatus).length > 0) {
-      console.log('🔄 Returning cached status while services are starting:', DockerService.lastServiceStatus);
-      return DockerService.lastServiceStatus;
-    }
-
     try {
+      // Ensure directories are initialized first
+      await this.initializePaths();
+      
+      // Return cached status if services are still starting
+      if (DockerService.servicesStarting && Object.keys(DockerService.lastServiceStatus).length > 0) {
+        logger.info('🔄 Returning cached status while services are starting:', DockerService.lastServiceStatus);
+        return DockerService.lastServiceStatus;
+      }
+
       const services: Record<string, ServiceStatus> = {};
       const statusPromises = Object.entries(this.serviceConfigs).map(async ([serviceName, config]) => {
         try {
           const containerName = this.getContainerName(serviceName);
-          console.log(`📋 Checking status for ${serviceName} (${containerName})`);
+          logger.info(`📋 Checking status for ${serviceName} (${containerName})`);
           
-          const { stdout: inspectOutput } = await exec(`docker inspect ${containerName} || echo "not-found"`);
-          console.log(`🔍 Inspect output for ${serviceName}:`, inspectOutput.substring(0, 100) + '...');
+          const inspectCommand = `docker inspect ${containerName} || echo "not-found"`;
+          const inspectOutput = await this.dockerChecker.execCommand(inspectCommand);
+          logger.info(`🔍 Inspect output for ${serviceName}:`, inspectOutput.substring(0, 100) + '...');
           
           if (inspectOutput === "not-found") {
-            console.log(`❌ Container not found for ${serviceName}`);
+            logger.info(`❌ Container not found for ${serviceName}`);
             services[serviceName] = {
               name: config.name,
               status: 'stopped',
@@ -511,21 +567,18 @@ export class DockerService {
 
           const inspectData = JSON.parse(inspectOutput)[0];
           const isRunning = inspectData?.State?.Running === true;
-          console.log(`⚡ Container running state for ${serviceName}:`, isRunning);
+          logger.info(`⚡ Container running state for ${serviceName}:`, isRunning);
           
           const health = await this.getServiceHealth(serviceName);
-          console.log(`💚 Health status for ${serviceName}:`, health);
+          logger.info(`💚 Health status for ${serviceName}:`, health);
 
           if (isRunning) {
             // Get metrics in parallel
-            const metricsPromise = exec(
-              `docker stats ${containerName} --no-stream --format "{{.CPUPerc}};{{.MemUsage}};{{.NetIO}}"`
-            ).catch(() => ({ stdout: '0%;0MB;0B' }));
-
-            const { stdout: statsOutput } = await metricsPromise;
+            const statsCommand = `docker stats ${containerName} --no-stream --format "{{.CPUPerc}};{{.MemUsage}};{{.NetIO}}"`;
+            const statsOutput = await this.dockerChecker.execCommand(statsCommand).catch(() => '0%;0MB;0B');
             const [cpu, mem, net] = statsOutput.split(';');
-            console.log(`📊 Metrics for ${serviceName}:`, { cpu, mem, net });
-            
+            logger.info(`📊 Metrics for ${serviceName}:`, { cpu, mem, net });
+
             services[serviceName] = {
               name: config.name,
               status: 'running',
@@ -543,7 +596,7 @@ export class DockerService {
               logs: []
             };
           } else {
-            console.log(`⏹️ Service ${serviceName} is not running`);
+            logger.info(`⏹️ Service ${serviceName} is not running`);
             services[serviceName] = {
               name: config.name,
               status: 'stopped',
@@ -558,7 +611,7 @@ export class DockerService {
             };
           }
         } catch (error) {
-          console.error(`❌ Error getting status for ${serviceName}:`, error);
+          logger.error(`❌ Error getting status for ${serviceName}:`, error);
           services[serviceName] = {
             name: config.name,
             status: 'error',
@@ -575,11 +628,11 @@ export class DockerService {
       });
 
       await Promise.all(statusPromises);
-      console.log('✅ Final services status:', services);
+      logger.info('✅ Final services status:', services);
       DockerService.lastServiceStatus = services;
       return services;
     } catch (error) {
-      console.error('❌ Error getting services status:', error);
+      logger.error('❌ Error getting services status:', error);
       return DockerService.lastServiceStatus;
     }
   }
@@ -597,11 +650,14 @@ export class DockerService {
 
   async getServiceLogs(serviceName: string): Promise<Array<{ timestamp: string; message: string; level: string }>> {
     try {
+      // Ensure directories are initialized first
+      await this.initializePaths();
+
       if (!await this.checkDockerStatus()) {
         return [];
       }
 
-      console.log('getServiceLogs input serviceName:', serviceName);
+      logger.info('getServiceLogs input serviceName:', serviceName);
 
       // Find the service config entry by display name
       const serviceEntry = Object.entries(this.serviceConfigs).find(([_, config]) => 
@@ -611,8 +667,8 @@ export class DockerService {
       );
 
       if (!serviceEntry) {
-        console.error('Service entry not found for:', serviceName);
-        console.log('Available services:', Object.entries(this.serviceConfigs).map(([key, config]) => ({
+        logger.error('Service entry not found for:', serviceName);
+        logger.info('Available services:', Object.entries(this.serviceConfigs).map(([key, config]) => ({
           key,
           name: config.name,
           displayName: config.displayName
@@ -621,18 +677,18 @@ export class DockerService {
       }
 
       const [_, config] = serviceEntry;
-      console.log('Found service config:', {
+      logger.info('Found service config:', {
         inputName: serviceName,
         dockerServiceName: config.name,
         displayName: config.displayName
       });
       
-      const command = `docker compose -f "${this.composeFilePath}" logs --no-color --tail=100 ${config.name}`;
-      console.log('Executing command:', command);
+      const command = `cd "${path.dirname(this.composeFilePath)}" && docker compose logs --no-color --tail=100 ${config.name}`;
+      logger.info('Executing command:', command);
 
-      const { stdout } = await exec(command);
+      const output = await this.dockerChecker.execCommand(command);
 
-      return stdout.split('\n')
+      return output.split('\n')
         .filter(line => line.trim())
         .map(line => ({
           timestamp: new Date().toISOString(),
@@ -641,13 +697,16 @@ export class DockerService {
                  line.toLowerCase().includes('warn') ? 'warn' : 'info'
         }));
     } catch (error) {
-      console.error(`Failed to get logs for service ${serviceName}:`, error);
+      logger.error(`Failed to get logs for service ${serviceName}:`, error);
       return [];
     }
   }
 
   async startService(serviceName: string): Promise<{ success: boolean; error?: string }> {
     try {
+      // Ensure directories are initialized first
+      await this.initializePaths();
+
       if (!await this.checkDockerStatus()) {
         return { success: false, error: 'Docker is not running' };
       }
@@ -662,18 +721,16 @@ export class DockerService {
       }
 
       const [dockerServiceName] = serviceEntry;
-      const { stdout, stderr } = await exec(
-        `docker compose -f "${this.composeFilePath}" up -d ${dockerServiceName}`
-      );
-      
-      if (stderr && !stderr.includes('Creating') && !stderr.includes('Starting')) {
+      const command = `cd "${path.dirname(this.composeFilePath)}" && docker compose up -d ${dockerServiceName}`;
+      try {
+        await this.dockerChecker.execCommand(command);
+        return { success: true };
+      } catch (error) {
         return { 
           success: false, 
-          error: stderr 
+          error: error instanceof Error ? error.message : `Failed to start ${serviceName}` 
         };
       }
-
-      return { success: true };
     } catch (error) {
       return { 
         success: false, 
@@ -684,6 +741,9 @@ export class DockerService {
 
   async stopService(serviceName: string): Promise<{ success: boolean; error?: string }> {
     try {
+      // Ensure directories are initialized first
+      await this.initializePaths();
+
       if (!await this.checkDockerStatus()) {
         return { success: false, error: 'Docker is not running' };
       }
@@ -698,18 +758,16 @@ export class DockerService {
       }
 
       const [dockerServiceName] = serviceEntry;
-      const { stdout, stderr } = await exec(
-        `docker compose -f "${this.composeFilePath}" stop ${dockerServiceName}`
-      );
-      
-      if (stderr && !stderr.includes('Stopping')) {
+      const command = `cd "${path.dirname(this.composeFilePath)}" && docker compose stop ${dockerServiceName}`;
+      try {
+        await this.dockerChecker.execCommand(command);
+        return { success: true };
+      } catch (error) {
         return { 
           success: false, 
-          error: stderr 
+          error: error instanceof Error ? error.message : `Failed to stop ${serviceName}` 
         };
       }
-
-      return { success: true };
     } catch (error) {
       return { 
         success: false, 
@@ -737,6 +795,9 @@ export class DockerService {
 
   async restartService(serviceName: string): Promise<{ success: boolean; error?: string }> {
     try {
+      // Ensure directories are initialized first
+      await this.initializePaths();
+
       if (!await this.checkDockerStatus()) {
         return { success: false, error: 'Docker is not running' };
       }
@@ -751,18 +812,16 @@ export class DockerService {
       }
 
       const [dockerServiceName] = serviceEntry;
-      const { stdout, stderr } = await exec(
-        `docker compose -f "${this.composeFilePath}" restart ${dockerServiceName}`
-      );
-      
-      if (stderr && !stderr.includes('Restarting')) {
+      const command = `cd "${path.dirname(this.composeFilePath)}" && docker compose restart ${dockerServiceName}`;
+      try {
+        await this.dockerChecker.execCommand(command);
+        return { success: true };
+      } catch (error) {
         return { 
           success: false, 
-          error: stderr 
+          error: error instanceof Error ? error.message : `Failed to restart ${serviceName}` 
         };
       }
-
-      return { success: true };
     } catch (error) {
       return { 
         success: false, 

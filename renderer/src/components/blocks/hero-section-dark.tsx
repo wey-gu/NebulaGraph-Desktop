@@ -60,17 +60,17 @@ const HeroSection = React.forwardRef<HTMLDivElement, HeroSectionProps>(
   (
     {
       className,
-      title = "Build products for everyone",
+      title = "",
       subtitle = {
         regular: "Designing your projects faster with ",
         gradient: "the largest figma UI kit.",
       },
-      description = "Sed ut perspiciatis unde omnis iste natus voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae.",
-      ctaText = "Browse courses",
+      description = "A desktop application for managing NebulaGraph databases",
+      ctaText = "Get Started",
       ctaHref = "#",
       bottomImage = {
-        light: "/dashboard-light.png",
-        dark: "/dashboard-dark.png",
+        light: './nebula_arch.mp4',
+        dark: './nebula_arch.mp4'
       },
       gridOptions,
       onClick,
@@ -119,19 +119,18 @@ const HeroSection = React.forwardRef<HTMLDivElement, HeroSectionProps>(
                 </span>
               </div>
             </div>
-            {bottomImage && (
-              <div className="mt-32 mx-10 relative z-10 transform hover:scale-[1.01] transition-transform duration-500">
-                <div className="absolute inset-0 bg-gradient-to-tr from-purple-500/10 to-pink-500/10 dark:from-purple-500/5 dark:to-pink-500/5 rounded-lg filter blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <div className="mt-10 relative max-w-5xl mx-auto">
+              <div className="w-full object-cover rounded-xl opacity-80">
                 <video
                   src={bottomImage.light}
-                  className="w-full shadow-lg rounded-lg border border-gray-200 dark:border-gray-800 transition-shadow duration-300 hover:shadow-xl"
                   autoPlay
                   loop
                   muted
                   playsInline
+                  className="w-full h-full object-cover rounded-xl"
                 />
               </div>
-            )}
+            </div>
           </div>
         </section>
       </div>

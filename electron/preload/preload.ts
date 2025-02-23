@@ -135,11 +135,35 @@ const docker: DockerAPI = {
   }
 };
 
+// Add log handling
+ipcRenderer.on('log', (_, log) => {
+  const { level, message, timestamp } = log;
+  const formattedMessage = `${message}`;
+  
+  switch (level) {
+    case 'error':
+      console.error(formattedMessage);
+      break;
+    case 'warn':
+      console.warn(formattedMessage);
+      break;
+    default:
+      console.log(formattedMessage);
+  }
+});
+
 // Expose the API to the renderer process
 try {
   console.log('🔌 Exposing Electron API...');
   contextBridge.exposeInMainWorld('electronAPI', {
-    docker: docker
+    docker: docker,
+    logs: {
+      subscribe: (callback: (log: any) => void) => {
+        const subscription = (_: any, log: any) => callback(log);
+        ipcRenderer.on('log', subscription);
+        return () => ipcRenderer.removeListener('log', subscription);
+      }
+    }
   });
   console.log('✓ Electron API exposed successfully');
 } catch (error) {

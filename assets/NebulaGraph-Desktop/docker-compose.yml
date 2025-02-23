@@ -26,7 +26,6 @@ services:
       - 19560
     volumes:
       - ./data/meta:/data/meta:rw
-      # - ./logs/meta:/logs:rw
 
   storaged:
     image: vesoft/nebula-storaged:v3.8.0
@@ -57,7 +56,6 @@ services:
       - 19780
     volumes:
       - ./data/storage:/data/storage:rw
-      # - ./logs/storage:/logs:rw
 
   graphd:
     image: vesoft/nebula-graphd:v3.8.0
@@ -83,8 +81,6 @@ services:
       - 9669:9669
       - 19669:19669
       - 19670
-    # volumes:
-      # - ./logs/graph:/logs:rw
 
   studio:
     image: vesoft/nebula-graph-studio:v3.10.0
@@ -146,4 +142,3 @@ services:
 volumes:
   meta:
   storage:
-  # logs: 
