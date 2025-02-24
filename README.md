@@ -18,7 +18,7 @@ A modern, cross-platform desktop version of NebulaGraph.
 
 1. Install [Docker](https://www.docker.com/get-started) on your system
 
-2. Download NebulaGraph Desktop from the [releases page](https://github.com/vesoft-inc/nebulagraph-desktop/releases)
+2. Download NebulaGraph Desktop from the [releases page](https://github.com/wey-gu/nebulagraph-desktop/releases)
 
     - for macOS, you need to install the `dmg` file, and do one extra step as below.
     - for Windows, you need to install the `exe` file
