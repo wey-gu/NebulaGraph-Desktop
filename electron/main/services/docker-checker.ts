@@ -238,7 +238,7 @@ export class DockerChecker {
     return highlights;
   }
 
-  async execCommand(command: string): Promise<string> {
+  async execCommand(command: string, workingDir?: string): Promise<string> {
     try {
       logger.info('🔄 Executing command:', command);
       
@@ -250,7 +250,13 @@ export class DockerChecker {
         }
       }
 
-      const { stdout, stderr } = await exec(command, { env: this.customEnv });
+      const execOptions: { env?: NodeJS.ProcessEnv; cwd?: string } = { env: this.customEnv };
+      if (workingDir) {
+        logger.info('📂 Using working directory:', workingDir);
+        execOptions.cwd = workingDir;
+      }
+
+      const { stdout, stderr } = await exec(command, execOptions);
       if (stderr) {
         logger.warn('⚠️ Command stderr:', stderr);
       }
