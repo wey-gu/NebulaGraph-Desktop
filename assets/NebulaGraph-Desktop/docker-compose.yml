@@ -62,6 +62,8 @@ services:
     environment:
       USER: root
     command:
+      - --local_ip=graphd
+      - --ws_ip=graphd
       - --meta_server_addrs=metad:9559
       - --port=9669
       # - --log_dir=/logs
