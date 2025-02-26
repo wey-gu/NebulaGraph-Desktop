@@ -248,8 +248,8 @@ export class DockerService {
       const logsPath = this.logsDir.replace(/\\/g, '/');
       
       const updatedContent = templateContent
-        .replace(/\.\/(data|logs)/g, (_, dir) => dir === 'data' ? dataPath : logsPath)
-        .replace(/\${PWD}\/(data|logs)/g, (_, dir) => dir === 'data' ? dataPath : logsPath);
+        .replace(/\.\/(data|logs)/g, (_: string, dir: string) => dir === 'data' ? dataPath : logsPath)
+        .replace(/\${PWD}\/(data|logs)/g, (_: string, dir: string) => dir === 'data' ? dataPath : logsPath);
       
       // Write the updated compose file
       await fs.writeFile(this.composeFilePath, updatedContent);
@@ -413,9 +413,9 @@ export class DockerService {
 
       // Execute docker compose up
       logger.info('📦 Running docker compose up...');
-      const command = `cd "${path.dirname(this.composeFilePath)}" && docker compose up -d`;
+      const composeDir = path.dirname(this.composeFilePath);
       try {
-        await this.dockerChecker.execCommand(command);
+        await this.dockerChecker.execCommand('docker compose up -d', composeDir);
         logger.info('✅ Services started successfully');
       } catch (error) {
         logger.error('❌ Failed to start services:', error);
@@ -458,9 +458,9 @@ export class DockerService {
         return { success: false, error: 'Docker is not running' };
       }
 
-      const command = `cd "${path.dirname(this.composeFilePath)}" && docker compose stop`;
+      const composeDir = path.dirname(this.composeFilePath);
       try {
-        await this.dockerChecker.execCommand(command);
+        await this.dockerChecker.execCommand('docker compose stop', composeDir);
         return { success: true };
       } catch (error) {
         logger.error('Failed to stop services:', error);
@@ -487,9 +487,9 @@ export class DockerService {
         return { success: false, error: 'Docker is not running' };
       }
 
-      const command = `cd "${path.dirname(this.composeFilePath)}" && docker compose down`;
+      const composeDir = path.dirname(this.composeFilePath);
       try {
-        await this.dockerChecker.execCommand(command);
+        await this.dockerChecker.execCommand('docker compose down', composeDir);
         return { success: true };
       } catch (error) {
         logger.error('Failed to cleanup services:', error);
@@ -625,12 +625,13 @@ export class DockerService {
 
       // Check if any containers exist using docker compose ps
       try {
+        const composeDir = path.dirname(this.composeFilePath);
         const psCommand = process.platform === 'win32'
-          ? `cd "${path.dirname(this.composeFilePath)}" && docker compose ps -a --format "{{.Name}}"`
-          : `cd "${path.dirname(this.composeFilePath)}" && docker compose ps -a --format "{{.Name}}"`;
+          ? `docker compose ps -a --format "{{.Name}}"`
+          : `docker compose ps -a --format "{{.Name}}"`;
         
         logger.info('🔍 Running docker compose ps command:', psCommand);
-        const psOutput = await this.dockerChecker.execCommand(psCommand);
+        const psOutput = await this.dockerChecker.execCommand(psCommand, composeDir);
         logger.info('📋 Docker compose ps output:', { output: psOutput, isEmpty: !psOutput || psOutput.trim() === '' });
         
         // If no containers exist yet (even if compose file exists), return all as not created
@@ -857,10 +858,11 @@ export class DockerService {
         displayName: config.displayName
       });
       
-      const command = `cd "${path.dirname(this.composeFilePath)}" && docker compose logs --no-color --tail=100 ${config.name}`;
+      const composeDir = path.dirname(this.composeFilePath);
+      const command = `docker compose logs --no-color --tail=100 ${config.name}`;
       logger.info('Executing command:', command);
 
-      const output = await this.dockerChecker.execCommand(command);
+      const output = await this.dockerChecker.execCommand(command, composeDir);
 
       return output.split('\n')
         .filter(line => line.trim())
@@ -895,9 +897,9 @@ export class DockerService {
       }
 
       const [dockerServiceName] = serviceEntry;
-      const command = `cd "${path.dirname(this.composeFilePath)}" && docker compose up -d ${dockerServiceName}`;
+      const composeDir = path.dirname(this.composeFilePath);
       try {
-        await this.dockerChecker.execCommand(command);
+        await this.dockerChecker.execCommand(`docker compose up -d ${dockerServiceName}`, composeDir);
         return { success: true };
       } catch (error) {
         return { 
@@ -932,9 +934,9 @@ export class DockerService {
       }
 
       const [dockerServiceName] = serviceEntry;
-      const command = `cd "${path.dirname(this.composeFilePath)}" && docker compose stop ${dockerServiceName}`;
+      const composeDir = path.dirname(this.composeFilePath);
       try {
-        await this.dockerChecker.execCommand(command);
+        await this.dockerChecker.execCommand(`docker compose stop ${dockerServiceName}`, composeDir);
         return { success: true };
       } catch (error) {
         return { 
@@ -986,9 +988,9 @@ export class DockerService {
       }
 
       const [dockerServiceName] = serviceEntry;
-      const command = `cd "${path.dirname(this.composeFilePath)}" && docker compose restart ${dockerServiceName}`;
+      const composeDir = path.dirname(this.composeFilePath);
       try {
-        await this.dockerChecker.execCommand(command);
+        await this.dockerChecker.execCommand(`docker compose restart ${dockerServiceName}`, composeDir);
         return { success: true };
       } catch (error) {
         return { 
