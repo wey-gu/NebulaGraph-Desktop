@@ -1,5 +1,20 @@
 # NebulaGraph Desktop
 
+<!-- Project Information -->
+[![for NebulaGraph](https://img.shields.io/badge/Toolchain-NebulaGraph-blue?style=for-the-badge&logo=graph&logoColor=white)](https://github.com/vesoft-inc/nebula) 
+[![GitHub release](https://img.shields.io/github/v/release/wey-gu/NebulaGraph-Desktop?label=Version&style=for-the-badge)](https://github.com/wey-gu/nebulagraph-desktop/releases) 
+[![Build Status](https://img.shields.io/github/actions/workflow/status/wey-gu/NebulaGraph-Desktop/build.yml?style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/wey-gu/NebulaGraph-Desktop/actions/workflows/build.yml) 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=for-the-badge&logo=apache&logoColor=white)](https://github.com/wey-gu/NebulaGraph-Desktop/blob/main/LICENSE)
+
+<!-- Downloads -->
+[![Windows](https://img.shields.io/badge/Windows-Download-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/wey-gu/nebulagraph-desktop/releases) 
+[![macOS](https://img.shields.io/badge/macOS-Download-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/wey-gu/nebulagraph-desktop/releases)
+
+<!-- Technology Stack -->
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Electron](https://img.shields.io/badge/Built_with-Electron-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://www.electronjs.org/)
+[![Docker](https://img.shields.io/badge/Requires-Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/get-started)
+
 A modern, cross-platform desktop version of NebulaGraph.
 
 ![NebulaGraph Desktop](./assets/screenshot.png)
@@ -35,7 +50,7 @@ Note: fill in `graphd` as "IP Address" and `9669` as "Port", user and password: 
 
 > copied from [OpenAI Translator](https://github.com/openai-translator/openai-translator/)
 
-This step is to fix the error: "NebulaGraph Desktop can’t be opened because the developer cannot be verified." or "This app is damaged and suggested to be moved to Trash."
+This step is to fix the error: "NebulaGraph Desktop can't be opened because the developer cannot be verified." or "This app is damaged and suggested to be moved to Trash."
 
 <p align="center">
     <img alt="App is damaged" width="300" src="https://user-images.githubusercontent.com/1206493/223916804-45ce3f34-6a4a-4baf-a0c1-4ab5c54c521f.png" />
