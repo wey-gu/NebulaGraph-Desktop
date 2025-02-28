@@ -351,7 +351,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
               <div className="relative overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-r from-gray-500/10 via-gray-500/5 to-gray-500/10"></div>
                 <p className="text-sm text-gray-400 bg-gray-100/10 dark:bg-gray-900/20 rounded-lg px-3 py-2 border border-gray-100/20 dark:border-gray-800/30 relative">
-                  Service will be created/started when clicking "Start All"
+                  Service will be created/started when clicking `Start All`
                 </p>
               </div>
             </div>
