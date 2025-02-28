@@ -20,8 +20,8 @@ A modern, cross-platform desktop version of NebulaGraph.
 
 2. Download NebulaGraph Desktop from the [releases page](https://github.com/wey-gu/nebulagraph-desktop/releases)
 
-    - for macOS, you need to install the `dmg` file, and do one extra step as below.
-    - for Windows, you need to install the `exe` file
+   - for macOS, you need to install the `dmg` file, and do one extra step as below.
+   - for Windows, you need to install the `exe` file
 
 3. Install and launch the application
 
@@ -29,7 +29,7 @@ A modern, cross-platform desktop version of NebulaGraph.
 
 5. Open Studio in your browser to start working with NebulaGraph
 
-Note: fill in `graphd` as "IP Address" and `9669` as "Port", use `root` as "Username" and `nebula` as "Password"
+Note: fill in `graphd` as "IP Address" and `9669` as "Port", user and password: `root`/`nebula`
 
 ### macOS extra step
 
@@ -48,9 +48,9 @@ This step is to fix the error: "NebulaGraph Desktop can’t be opened because th
 
 - If you cannot find the above options in `Privacy & Security`, or get error prompts such as broken files with Apple Silicon machines. Open `Terminal.app` and enter the following command (you may need to enter a password halfway through), then restart `NebulaGraph Desktop`:
 
-    ```sh
-    sudo xattr -d com.apple.quarantine /Applications/NebulaGraph\ Desktop.app
-    ```
+  ```sh
+  sudo xattr -d com.apple.quarantine /Applications/NebulaGraph\ Desktop.app
+  ```
 
 ## System Requirements
 
@@ -61,8 +61,7 @@ This step is to fix the error: "NebulaGraph Desktop can’t be opened because th
 
 ## Development
 
-See [DEVELOPMENT.md](./DEVELOPMENT.md) for detailed development instructions and progress.
-
+See [DEVELOPMENT.md](./DEVELOPMENT.md) for detailed dev instructions and progress.
 
 ## License
 

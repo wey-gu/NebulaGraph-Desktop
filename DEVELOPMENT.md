@@ -12,12 +12,14 @@
 ### ✅ Completed Features
 
 #### Portal
+
 - Modern, responsive landing page with hero section
 - Smooth transition to dashboard
 - Professional branding and messaging
 - Video/animation integration for architecture visualization
 
 #### Dashboard/Console
+
 - Real-time service status monitoring
 - Individual service controls (start/stop/restart)
 - Health status indicators
@@ -27,6 +29,7 @@
 - Basic logging functionality
 
 #### Core Functionality
+
 - Docker service integration
 - Health check implementation
 - Service status detection
@@ -36,6 +39,7 @@
 ### 🔄 In Progress
 
 #### UI/UX Improvements
+
 - [x] Enhanced logging interface
   - Better log formatting
   - Log level filtering
@@ -46,6 +50,7 @@
 - [x] Error message presentation
 
 #### Technical Debt
+
 - [x] Docker compose path handling best practices
 - [x] Windows compatibility for Docker commands
 - [x] Build script for Docker image management
@@ -57,6 +62,7 @@
 ### Docker Configuration
 
 #### Images Used
+
 - vesoft/nebula-graphd:v3.8.0
 - vesoft/nebula-metad:v3.8.0
 - vesoft/nebula-storaged:v3.8.0
@@ -66,6 +72,7 @@
 ### Architecture
 
 #### Current Implementation
+
 - Electron + Next.js for cross-platform support
 - Docker for service management
 - TypeScript for type safety
@@ -73,6 +80,7 @@
 - React for UI components
 
 #### Key Components
+
 - Main Process (Electron)
   - Docker service management
   - IPC communication
@@ -85,6 +93,7 @@
 ## Next Steps (Milestone 2)
 
 ### 📦 Packaging & Distribution
+
 - [x] Create build pipeline for all platforms
 - [x] Embed required Docker images
   - Save images as tar files
@@ -97,6 +106,7 @@
   - Linux (AppImage)
 
 ### 🛠 Infrastructure
+
 - [ ] Improve error handling and recovery
 - [ ] Add telemetry (opt-in)
 - [ ] Implement crash reporting
@@ -104,6 +114,7 @@
 - [ ] Improve Docker Desktop detection and integration
 
 ### 💻 Developer Experience
+
 - [ ] Add development documentation
 - [ ] Create contribution guidelines
 - [x] Set up CI/CD pipeline
@@ -113,6 +124,7 @@
   - E2E tests for UI flows
 
 ### 🎨 UI/UX Enhancements
+
 - [ ] Add onboarding experience
 - [ ] Implement guided first-time setup
 - [ ] Add tooltips and help documentation
@@ -170,8 +182,10 @@ npm run test:ui
 
 ## Contributing
 
-We welcome contributions! Please check our issues page for current tasks or suggest new improvements.
+We welcome contributions!
+
+Please check our issues page for current tasks or suggest new improvements.
 
 ## License
 
-Apache License 2.0 
+Apache License 2.0
