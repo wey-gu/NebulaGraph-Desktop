@@ -1,19 +1,13 @@
 # NebulaGraph Desktop
 
-<!-- Project Information -->
-[![for NebulaGraph](https://img.shields.io/badge/Toolchain-NebulaGraph-blue?style=for-the-badge&logo=graph&logoColor=white)](https://github.com/vesoft-inc/nebula) 
-[![GitHub release](https://img.shields.io/github/v/release/wey-gu/NebulaGraph-Desktop?label=Version&style=for-the-badge)](https://github.com/wey-gu/nebulagraph-desktop/releases) 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/wey-gu/NebulaGraph-Desktop/build.yml?style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/wey-gu/NebulaGraph-Desktop/actions/workflows/build.yml) 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=for-the-badge&logo=apache&logoColor=white)](https://github.com/wey-gu/NebulaGraph-Desktop/blob/main/LICENSE)
+<!-- Project Status -->
+[![GitHub release](https://img.shields.io/github/v/release/wey-gu/NebulaGraph-Desktop?label=Version&style=flat-square)](https://github.com/wey-gu/nebulagraph-desktop/releases) [![Build Status](https://img.shields.io/github/actions/workflow/status/wey-gu/NebulaGraph-Desktop/build.yml?style=flat-square&logo=github-actions&logoColor=white)](https://github.com/wey-gu/NebulaGraph-Desktop/actions/workflows/build.yml) [![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square&logo=apache&logoColor=white)](https://github.com/wey-gu/NebulaGraph-Desktop/blob/main/LICENSE)
 
-<!-- Downloads -->
-[![Windows](https://img.shields.io/badge/Windows-Download-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/wey-gu/nebulagraph-desktop/releases) 
-[![macOS](https://img.shields.io/badge/macOS-Download-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/wey-gu/nebulagraph-desktop/releases)
+<!-- Download Options -->
+[![Windows](https://img.shields.io/badge/Windows-Download-0078D6?style=flat-square&logo=windows&logoColor=white)](https://github.com/wey-gu/nebulagraph-desktop/releases) [![macOS](https://img.shields.io/badge/macOS-Download-000000?style=flat-square&logo=apple&logoColor=white)](https://github.com/wey-gu/nebulagraph-desktop/releases)
 
-<!-- Technology Stack -->
-[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Electron](https://img.shields.io/badge/Built_with-Electron-47848F?style=for-the-badge&logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Docker](https://img.shields.io/badge/Requires-Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/get-started)
+<!-- Built With -->
+[![NebulaGraph](https://img.shields.io/badge/Powered_by-NebulaGraph-blue?style=flat-square&logo=graph&logoColor=white)](https://github.com/vesoft-inc/nebula) [![Electron](https://img.shields.io/badge/Built_with-Electron-47848F?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/) [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Docker](https://img.shields.io/badge/Requires-Docker-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/get-started)
 
 A modern, cross-platform desktop version of NebulaGraph.
 
