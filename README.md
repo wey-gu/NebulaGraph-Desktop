@@ -63,9 +63,6 @@ This step is to fix the error: "NebulaGraph Desktop can’t be opened because th
 
 See [DEVELOPMENT.md](./DEVELOPMENT.md) for detailed development instructions and progress.
 
-## Contributing
-
-We welcome contributions! Please read our [Contributing Guidelines](./CONTRIBUTING.md) before submitting pull requests.
 
 ## License
 
