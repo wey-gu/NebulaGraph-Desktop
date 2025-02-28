@@ -142,18 +142,38 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                   {!isServiceNotCreated && service.ports && service.ports.length > 0 && (
                     <div className="flex gap-1">
                       {service.ports.map((port) => (
-                        <a
-                          key={port}
-                          href={`http://localhost:${port}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="group/link inline-flex items-center gap-1 rounded-full bg-purple-100/10 dark:bg-purple-900/20 px-1.5 py-0.5 text-xs font-medium text-purple-400 hover:bg-purple-100/20 dark:hover:bg-purple-900/30 transition-all duration-300 hover:scale-105"
-                        >
-                          <span className="relative">
-                            <span className="absolute -inset-1 bg-purple-400/20 rounded-full blur-sm opacity-0 group-hover/link:opacity-100 transition-opacity duration-300"></span>
-                            <span className="relative">:{port}</span>
+                        service.name === 'studio' ? (
+                          <a
+                            key={port}
+                            href={`http://localhost:${port}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group/link inline-flex items-center gap-1 rounded-full bg-purple-100/10 dark:bg-purple-900/20 px-1.5 py-0.5 text-xs font-medium text-purple-400 hover:bg-purple-100/20 dark:hover:bg-purple-900/30 transition-all duration-300 hover:scale-105"
+                          >
+                            <Globe className="w-3 h-3 flex-shrink-0 translate-y-[-1px]" />
+                            <span className="relative">
+                              <span className="absolute -inset-1 bg-purple-400/20 rounded-full blur-sm opacity-0 group-hover/link:opacity-100 transition-opacity duration-300"></span>
+                              <span className="relative">{port}</span>
+                            </span>
+                          </a>
+                        ) : (
+                          <span
+                            key={port}
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs font-medium transition-all duration-300",
+                              "bg-blue-100/10 dark:bg-blue-900/20",
+                              "text-blue-500 dark:text-blue-400",
+                              "border border-blue-200/20 dark:border-blue-800/20",
+                              "group/port hover:bg-blue-100/20 dark:hover:bg-blue-900/30"
+                            )}
+                          >
+                            <Server className="w-3 h-3 flex-shrink-0 translate-y-[-1px]" />
+                            <span className="relative">
+                              <span className="absolute -inset-1 bg-blue-400/20 rounded-full blur-sm opacity-0 group-hover/port:opacity-100 transition-opacity duration-300"></span>
+                              <span className="relative">{port}</span>
+                            </span>
                           </span>
-                        </a>
+                        )
                       ))}
                     </div>
                   )}
