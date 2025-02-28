@@ -187,6 +187,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                 className={cn(
                   "rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300",
                   "hover:bg-purple-100/10 hover:text-purple-400 hover:border-purple-200/20",
+                  "bg-white dark:bg-transparent",
                   "z-20",
                   showLogs && "bg-purple-100/10 text-purple-400 border-purple-200/20"
                 )}
@@ -200,7 +201,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                 <Button
                   variant="outline"
                   size="icon"
-                  className="rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-green-100/10 hover:text-green-400 hover:border-green-200/20 z-20"
+                  className="rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-green-100/10 hover:text-green-400 hover:border-green-200/20 bg-white dark:bg-transparent z-20"
                   disabled={!!loadingAction || isServiceNotCreated}
                   onClick={() => handleServiceAction('start')}
                 >
@@ -215,7 +216,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                   <Button
                     variant="outline"
                     size="icon"
-                    className="rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-red-100/10 hover:text-red-400 hover:border-red-200/20 z-20"
+                    className="rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-red-100/10 hover:text-red-400 hover:border-red-200/20 bg-white dark:bg-transparent z-20"
                     disabled={!!loadingAction || isServiceNotCreated}
                     onClick={() => handleServiceAction('stop')}
                   >
@@ -228,7 +229,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                   <Button
                     variant="outline"
                     size="icon"
-                    className="rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-yellow-100/10 hover:text-yellow-400 hover:border-yellow-200/20 z-20"
+                    className="rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-yellow-100/10 hover:text-yellow-400 hover:border-yellow-200/20 bg-white dark:bg-transparent z-20"
                     disabled={!!loadingAction || isServiceNotCreated}
                     onClick={() => handleServiceAction('restart')}
                   >

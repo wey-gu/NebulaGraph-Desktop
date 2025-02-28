@@ -8,11 +8,11 @@ A modern, cross-platform desktop version of NebulaGraph.
 
 - 🚀 Modern, intuitive interface for managing NebulaGraph services
 - 🔄 Real-time service monitoring and health checks
-- 🌓 Dark/Light theme support
 - 📊 Resource usage metrics (CPU, Memory, Network)
 - 🔧 Individual service controls
 - 📝 Service logs viewer
 - 🎨 Beautiful, responsive UI
+- 🌐 Offline mode support (no Docker Hub image pull needed)
 
 ## Quick Start
 
@@ -28,6 +28,8 @@ A modern, cross-platform desktop version of NebulaGraph.
 4. Click "Start All" to launch NebulaGraph services
 
 5. Open Studio in your browser to start working with NebulaGraph
+
+Note: fill in `graphd` as "IP Address" and `9669` as "Port", use `root` as "Username" and `nebula` as "Password"
 
 ### macOS extra step
 

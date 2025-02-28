@@ -36,20 +36,21 @@
 ### 🔄 In Progress
 
 #### UI/UX Improvements
-- [ ] Enhanced logging interface
+- [x] Enhanced logging interface
   - Better log formatting
   - Log level filtering
   - Timestamp localization
   - Search/filter capabilities
-- [ ] Service card interactions refinement
-- [ ] Loading states and transitions
-- [ ] Error message presentation
+- [x] Service card interactions refinement
+- [x] Loading states and transitions
+- [x] Error message presentation
 
 #### Technical Debt
-- [ ] Docker compose path handling best practices
-- [ ] Windows compatibility for Docker commands
-- [ ] Build script for Docker image management
-- [ ] Service startup sequence optimization
+- [x] Docker compose path handling best practices
+- [x] Windows compatibility for Docker commands
+- [x] Build script for Docker image management
+- [x] Service startup sequence optimization
+- [ ] Ensure won't pull image before docker images being loaded
 
 ## Technical Implementation
 
@@ -61,12 +62,6 @@
 - vesoft/nebula-storaged:v3.8.0
 - vesoft/nebula-graph-studio:v3.10.0
 - vesoft/nebula-console:nightly
-
-#### Data Persistence Strategy
-- Map volumes to user-specific directories:
-  - macOS: ~/nebula-data
-  - Windows: %USERPROFILE%\nebula-data
-- Use Node.js os and path modules for dynamic paths
 
 ### Architecture
 
@@ -90,11 +85,11 @@
 ## Next Steps (Milestone 2)
 
 ### 📦 Packaging & Distribution
-- [ ] Create build pipeline for all platforms
-- [ ] Embed required Docker images
+- [x] Create build pipeline for all platforms
+- [x] Embed required Docker images
   - Save images as tar files
   - Implement loading mechanism
-- [ ] Implement image loading/verification on first start
+- [x] Implement image loading/verification on first start
 - [ ] Add auto-update mechanism
 - [ ] Create installers for all platforms
   - Windows (NSIS installer)
@@ -111,7 +106,7 @@
 ### 💻 Developer Experience
 - [ ] Add development documentation
 - [ ] Create contribution guidelines
-- [ ] Set up CI/CD pipeline
+- [x] Set up CI/CD pipeline
 - [ ] Add test coverage
   - Unit tests for core functionality
   - Integration tests for Docker operations
