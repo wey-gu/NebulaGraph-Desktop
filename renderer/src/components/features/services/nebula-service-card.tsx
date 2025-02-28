@@ -40,6 +40,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
       if (result.success) {
         await onServiceUpdate();
         toast.success(`${action.charAt(0).toUpperCase() + action.slice(1)}ed ${getServiceDisplayName(service.name)}`);
+        console.log('Service status after action:', service.name, service.status, service.health);
       } else if (result.error) {
         toast.error(`Failed to ${action} service`, {
           description: result.error
@@ -94,7 +95,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
   //   return `${minutes}m`;
   // };
 
-  const isServiceNotCreated = service.status === 'not_created' || service.health.status === 'not_created';
+  const isServiceNotCreated = service.status === 'not_created';
   const isServiceRunning = service.status === 'running' && service.health.status === 'healthy';
 
   return (
@@ -141,18 +142,38 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                   {!isServiceNotCreated && service.ports && service.ports.length > 0 && (
                     <div className="flex gap-1">
                       {service.ports.map((port) => (
-                        <a
-                          key={port}
-                          href={`http://localhost:${port}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="group/link inline-flex items-center gap-1 rounded-full bg-purple-100/10 dark:bg-purple-900/20 px-1.5 py-0.5 text-xs font-medium text-purple-400 hover:bg-purple-100/20 dark:hover:bg-purple-900/30 transition-all duration-300 hover:scale-105"
-                        >
-                          <span className="relative">
-                            <span className="absolute -inset-1 bg-purple-400/20 rounded-full blur-sm opacity-0 group-hover/link:opacity-100 transition-opacity duration-300"></span>
-                            <span className="relative">:{port}</span>
+                        service.name === 'studio' ? (
+                          <a
+                            key={port}
+                            href={`http://localhost:${port}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group/link inline-flex items-center gap-1 rounded-full bg-purple-100/10 dark:bg-purple-900/20 px-1.5 py-0.5 text-xs font-medium text-purple-400 hover:bg-purple-100/20 dark:hover:bg-purple-900/30 transition-all duration-300 hover:scale-105"
+                          >
+                            <Globe className="w-3 h-3 flex-shrink-0 translate-y-[-1px]" />
+                            <span className="relative">
+                              <span className="absolute -inset-1 bg-purple-400/20 rounded-full blur-sm opacity-0 group-hover/link:opacity-100 transition-opacity duration-300"></span>
+                              <span className="relative">{port}</span>
+                            </span>
+                          </a>
+                        ) : (
+                          <span
+                            key={port}
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs font-medium transition-all duration-300",
+                              "bg-blue-100/10 dark:bg-blue-900/20",
+                              "text-blue-500 dark:text-blue-400",
+                              "border border-blue-200/20 dark:border-blue-800/20",
+                              "group/port hover:bg-blue-100/20 dark:hover:bg-blue-900/30"
+                            )}
+                          >
+                            <Server className="w-3 h-3 flex-shrink-0 translate-y-[-1px]" />
+                            <span className="relative">
+                              <span className="absolute -inset-1 bg-blue-400/20 rounded-full blur-sm opacity-0 group-hover/port:opacity-100 transition-opacity duration-300"></span>
+                              <span className="relative">{port}</span>
+                            </span>
                           </span>
-                        </a>
+                        )
                       ))}
                     </div>
                   )}
@@ -169,7 +190,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                     }
                   )} />
                   <span className="text-sm text-gray-500 dark:text-gray-400 transition-colors duration-300 group-hover:text-gray-600 dark:group-hover:text-gray-300">
-                    {isServiceNotCreated ? 'Not Created' :
+                    {isServiceNotCreated ? 'Stopped' :
                       service.health.status === 'healthy' ? 'Healthy' :
                       service.health.status === 'unhealthy' ? 'Unhealthy' :
                       service.health.status === 'starting' ? 'Starting' :
@@ -187,7 +208,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                 className={cn(
                   "rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300",
                   "hover:bg-purple-100/10 hover:text-purple-400 hover:border-purple-200/20",
-                  "bg-white dark:bg-transparent",
+                  "bg-white dark:bg-transparent text-gray-700 dark:text-gray-200",
                   "z-20",
                   showLogs && "bg-purple-100/10 text-purple-400 border-purple-200/20"
                 )}
@@ -197,12 +218,18 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                 <Terminal className="w-4 h-4" />
                 <span className="sr-only">View logs</span>
               </Button>
-              {service.status === 'stopped' ? (
+              {/* Show start button if service exists but is not running */}
+              {(!service.status || service.status === 'stopped') && !isServiceNotCreated ? (
                 <Button
                   variant="outline"
                   size="icon"
-                  className="rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-green-100/10 hover:text-green-400 hover:border-green-200/20 bg-white dark:bg-transparent z-20"
-                  disabled={!!loadingAction || isServiceNotCreated}
+                  className={cn(
+                    "rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300",
+                    "hover:bg-green-100/10 hover:text-green-400 hover:border-green-200/20",
+                    "bg-white dark:bg-transparent text-gray-700 dark:text-gray-200",
+                    "z-20"
+                  )}
+                  disabled={!!loadingAction}
                   onClick={() => handleServiceAction('start')}
                 >
                   {loadingAction === 'start' ? (
@@ -211,13 +238,18 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                     <Play className="w-4 h-4" />
                   )}
                 </Button>
-              ) : (
+              ) : service.status === 'running' ? (
                 <>
                   <Button
                     variant="outline"
                     size="icon"
-                    className="rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-red-100/10 hover:text-red-400 hover:border-red-200/20 bg-white dark:bg-transparent z-20"
-                    disabled={!!loadingAction || isServiceNotCreated}
+                    className={cn(
+                      "rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300",
+                      "hover:bg-red-100/10 hover:text-red-400 hover:border-red-200/20",
+                      "bg-white dark:bg-transparent text-gray-700 dark:text-gray-200",
+                      "z-20"
+                    )}
+                    disabled={!!loadingAction}
                     onClick={() => handleServiceAction('stop')}
                   >
                     {loadingAction === 'stop' ? (
@@ -229,8 +261,13 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                   <Button
                     variant="outline"
                     size="icon"
-                    className="rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-yellow-100/10 hover:text-yellow-400 hover:border-yellow-200/20 bg-white dark:bg-transparent z-20"
-                    disabled={!!loadingAction || isServiceNotCreated}
+                    className={cn(
+                      "rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-300",
+                      "hover:bg-yellow-100/10 hover:text-yellow-400 hover:border-yellow-200/20",
+                      "bg-white dark:bg-transparent text-gray-700 dark:text-gray-200",
+                      "z-20"
+                    )}
+                    disabled={!!loadingAction}
                     onClick={() => handleServiceAction('restart')}
                   >
                     {loadingAction === 'restart' ? (
@@ -240,7 +277,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
                     )}
                   </Button>
                 </>
-              )}
+              ) : null}
             </div>
           </div>
 
@@ -314,7 +351,7 @@ export function NebulaServiceCard({ service, isLoading, onServiceUpdate }: Nebul
               <div className="relative overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-r from-gray-500/10 via-gray-500/5 to-gray-500/10"></div>
                 <p className="text-sm text-gray-400 bg-gray-100/10 dark:bg-gray-900/20 rounded-lg px-3 py-2 border border-gray-100/20 dark:border-gray-800/30 relative">
-                  Service will be created when you start NebulaGraph
+                  Service will be created/started when clicking "Start All"
                 </p>
               </div>
             </div>
